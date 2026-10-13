@@ -9,9 +9,7 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
-function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+const { generateOTP, createOTP, verifyOTP } = require('../utils/otp');
 
 async function sendOTPEmail(email, otp, name) {
   await transporter.sendMail({
@@ -71,7 +69,6 @@ router.post('/signup', async (req, res) => {
 
     const password_hash = await bcrypt.hash(password, 10);
     const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     if (check.rows.length > 0) {
       await pool.query(
@@ -86,8 +83,7 @@ router.post('/signup', async (req, res) => {
       );
     }
 
-    await pool.query('DELETE FROM otps WHERE email=$1', [email]);
-    await pool.query('INSERT INTO otps (email, otp, expires_at) VALUES ($1,$2,$3)', [email, otp, expiresAt]);
+    await createOTP(email, otp);
     await sendOTPEmail(email, otp, name);
     res.json({ message: 'OTP sent to your email successfully.' });
   } catch (err) {
@@ -101,11 +97,8 @@ router.post('/verify-otp', async (req, res) => {
   if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
 
   try {
-    const result = await pool.query(
-      'SELECT * FROM otps WHERE email=$1 AND otp=$2 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
-      [email, otp]
-    );
-    if (!result.rows.length) return res.status(400).json({ error: 'Invalid or expired OTP' });
+    const check = await verifyOTP(email, otp, true);
+    if (!check.valid) return res.status(400).json({ error: check.error });
 
     // Get vendor with pending subscription info
     const vendorRes = await pool.query('SELECT id, pending_plan_id, pending_payment_id FROM vendors WHERE email=$1', [email]);
@@ -131,7 +124,6 @@ router.post('/verify-otp', async (req, res) => {
     }
 
     await pool.query("UPDATE vendors SET status='pending' WHERE email=$1", [email]);
-    await pool.query('DELETE FROM otps WHERE email=$1', [email]);
     res.json({ message: 'Application verified. Awaiting admin approval.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -176,10 +168,7 @@ router.post('/forgot-password', async (req, res) => {
     if (!vendor.rows.length) return res.status(404).json({ error: 'Vendor not found' });
 
     const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-    await pool.query('DELETE FROM otps WHERE email=$1', [email]);
-    await pool.query('INSERT INTO otps (email, otp, expires_at) VALUES ($1,$2,$3)', [email, otp, expiresAt]);
+    await createOTP(email, otp);
 
     await sendVendorPasswordResetOTPEmail(email, otp, vendor.rows[0].name);
     res.json({ message: 'OTP sent to your email' });
@@ -194,11 +183,8 @@ router.post('/verify-reset-otp', async (req, res) => {
   if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
 
   try {
-    const result = await pool.query(
-      'SELECT * FROM otps WHERE email=$1 AND otp=$2 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
-      [email, otp]
-    );
-    if (!result.rows.length) return res.status(400).json({ error: 'Invalid or expired OTP' });
+    const check = await verifyOTP(email, otp, false);
+    if (!check.valid) return res.status(400).json({ error: check.error });
     res.json({ success: true, message: 'OTP verified' });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -211,15 +197,11 @@ router.post('/reset-password', async (req, res) => {
   if (!email || !otp || !newPassword) return res.status(400).json({ error: 'Missing required fields' });
 
   try {
-    const result = await pool.query(
-      'SELECT * FROM otps WHERE email=$1 AND otp=$2 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
-      [email, otp]
-    );
-    if (!result.rows.length) return res.status(400).json({ error: 'Invalid or expired OTP' });
+    const check = await verifyOTP(email, otp, true);
+    if (!check.valid) return res.status(400).json({ error: check.error });
 
     const hash = await bcrypt.hash(newPassword, 10);
     await pool.query('UPDATE vendors SET password_hash=$1 WHERE email=$2', [hash, email]);
-    await pool.query('DELETE FROM otps WHERE email=$1', [email]);
 
     res.json({ success: true, message: 'Password reset successfully' });
   } catch (err) {
