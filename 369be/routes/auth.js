@@ -7,6 +7,9 @@ const { calculateOrder, DELIVERY_CHARGE } = require('../utils/pricing');
 const { verifyRazorpayPayment } = require('../utils/razorpay');
 const { generateOTP, createOTP, verifyOTP } = require('../utils/otp');
 const { authLimiter } = require('../utils/rateLimiter');
+const { validate, signupSchema, loginSchema, addressSchema, orderSchema } = require('../utils/validation');
+
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -242,7 +245,7 @@ function authMiddleware(req, res, next) {
 }
 
 // POST /api/auth/signup - send OTP
-router.post('/signup', authLimiter, async (req, res) => {
+router.post('/signup', authLimiter, validate(signupSchema), async (req, res) => {
   const { name, email, phone, password } = req.body;
   if (!name || !email || !phone || !password)
     return res.status(400).json({ error: 'All fields are required' });
@@ -289,7 +292,7 @@ router.post('/verify-otp', authLimiter, async (req, res) => {
 
     const user = await pool.query('SELECT id, name, email, phone, role FROM users WHERE email=$1', [email]);
     const u = user.rows[0];
-    const token = jwt.sign({ id: u.id, email, role: u.role }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '7d' });
+    const token = jwt.sign({ id: u.id, email, role: u.role }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user: u });
   } catch (err) {
     console.error(err);
@@ -353,7 +356,7 @@ router.post('/reset-password', async (req, res) => {
 });
 
 // POST /api/auth/login
-router.post('/login', authLimiter, async (req, res) => {
+router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
@@ -406,7 +409,7 @@ router.put('/profile', authMiddleware, async (req, res) => {
 });
 
 // POST /api/auth/address
-router.post('/address', authMiddleware, async (req, res) => {
+router.post('/address', authMiddleware, validate(addressSchema), async (req, res) => {
   const { name, line1, line2, city, state, pincode, mobile, is_default } = req.body;
   try {
     if (is_default) {
@@ -423,7 +426,7 @@ router.post('/address', authMiddleware, async (req, res) => {
 });
 
 // POST /api/auth/orders
-router.post('/orders', authMiddleware, async (req, res) => {
+router.post('/orders', authMiddleware, validate(orderSchema), async (req, res) => {
   const {
     items,
     address,

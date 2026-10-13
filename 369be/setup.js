@@ -173,14 +173,21 @@ async function setup() {
 
   // Seed admin user
   const bcrypt = require('bcryptjs');
-  const adminEmail = 'admin@mokshamandir.com';
-  const adminPass = await bcrypt.hash('Admin@1234', 10);
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!adminEmail || !adminPassword) {
+    console.error('❌ Missing ADMIN_EMAIL or ADMIN_PASSWORD environment variables. Cannot seed admin user.');
+    process.exit(1);
+  }
+
+  const adminPass = await bcrypt.hash(adminPassword, 10);
   await pool.query(`
     INSERT INTO users (name, email, phone, password_hash, is_verified, role)
     VALUES ('Admin', $1, '+91 00000 00000', $2, TRUE, 'admin')
     ON CONFLICT (email) DO UPDATE SET role='admin', is_verified=TRUE, password_hash=$2
   `, [adminEmail, adminPass]);
-  console.log('✅ Admin seeded → email: admin@mokshamandir.com | password: Admin@1234');
+  console.log(`✅ Admin seeded → email: ${adminEmail} (password set from ADMIN_PASSWORD)`);
   process.exit(0);
 }
 

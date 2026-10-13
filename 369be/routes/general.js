@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const { calculateOrder, DELIVERY_CHARGE } = require('../utils/pricing');
 const { verifyRazorpayPayment } = require('../utils/razorpay');
+const { validate, orderSchema } = require('../utils/validation');
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -214,7 +215,7 @@ router.get('/products', async (req, res) => {
 });
 
 // POST /api/general/orders (Checkout)
-router.post('/orders', async (req, res) => {
+router.post('/orders', validate(orderSchema), async (req, res) => {
   const {
     items,
     address,

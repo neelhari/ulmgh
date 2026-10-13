@@ -2,15 +2,27 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is missing. Server refusing to start.');
+  process.exit(1);
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+const helmet = require('helmet');
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
+
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow all vercel.app subdomains, localhost, and any custom domain set via env
+    // Allow all vercel.app subdomains, localhost, capacitor, and any custom domain set via env
     const allowed = [
       'http://localhost:5173',
       'http://localhost:3000',
+      'https://localhost',
+      'capacitor://localhost',
       'https://369-bay.vercel.app',
       process.env.FRONTEND_URL,
     ].filter(Boolean);
