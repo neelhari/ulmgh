@@ -231,7 +231,7 @@ export function CheckoutPage() {
   const COD_ADVANCE = 1;
   const codRemaining = grandTotal - COD_ADVANCE;
 
-  const createOrder = async (pMethod) => {
+  const createOrder = async (pMethod, razorpayDetails = {}) => {
     const endpoint = token ? `${BACKEND_URL}/auth/orders` : `${BACKEND_URL}/general/orders`;
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -244,6 +244,9 @@ export function CheckoutPage() {
         total: grandTotal,
         coupon_code: couponCode,
         payment_method: pMethod,
+        razorpay_order_id: razorpayDetails.razorpay_order_id,
+        razorpay_payment_id: razorpayDetails.razorpay_payment_id,
+        razorpay_signature: razorpayDetails.razorpay_signature,
       })
     });
     return res.json();
@@ -276,7 +279,7 @@ export function CheckoutPage() {
       const orderData = await orderRes.json();
 
       if (!orderData.success) {
-        alert('Failed to initialize payment');
+        alert(orderData.error || 'Failed to initialize payment');
         setIsPlacingOrder(false);
         return;
       }
@@ -305,18 +308,22 @@ export function CheckoutPage() {
             const verifyData = await verifyRes.json();
 
             if (verifyData.success) {
-              const createOrderData = await createOrder(paymentMethod);
+              const createOrderData = await createOrder(paymentMethod, {
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              });
               if (createOrderData.success) {
                 setTimeout(() => {
                   clearCart();
                   navigate(`/order-tracking/${createOrderData.order.order_number}`);
                 }, 2000);
               } else {
-                alert('Failed to place order after payment.');
+                alert(createOrderData.error || 'Failed to place order after payment.');
                 setIsPlacingOrder(false);
               }
             } else {
-              alert('Payment verification failed');
+              alert(verifyData.error || 'Payment verification failed');
               setIsPlacingOrder(false);
             }
           } catch (err) {

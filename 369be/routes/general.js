@@ -4,6 +4,7 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const { calculateOrder, DELIVERY_CHARGE } = require('../utils/pricing');
+const { verifyRazorpayPayment } = require('../utils/razorpay');
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -214,7 +215,15 @@ router.get('/products', async (req, res) => {
 
 // POST /api/general/orders (Checkout)
 router.post('/orders', async (req, res) => {
-  const { items, address, coupon_code, payment_method } = req.body;
+  const {
+    items,
+    address,
+    coupon_code,
+    payment_method,
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature
+  } = req.body;
   
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Cart is empty' });
@@ -224,17 +233,55 @@ router.post('/orders', async (req, res) => {
     // Recalculate prices from database, check stock, and apply coupons via shared pricing utility
     const { verifiedItems, subtotal, discount, deliveryCharge, total: calculatedTotal } = await calculateOrder(items, coupon_code || req.body.couponCode);
 
-    const orderNumber = `ORD-${Date.now()}`;
-    const itemsJson = JSON.stringify(verifiedItems);
-    const addressJson = JSON.stringify(address);
     const pMethod = payment_method || 'prepaid';
     const advancePaid = pMethod === 'cod' ? 1 : calculatedTotal;
 
-    const result = await pool.query(
-      `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [orderNumber, calculatedTotal, itemsJson, addressJson, 'pending', pMethod, advancePaid]
-    );
+    // Check payment reuse via razorpay_payment_id
+    if (razorpay_payment_id) {
+      try {
+        const dupCheck = await pool.query('SELECT id FROM orders WHERE razorpay_payment_id = $1', [razorpay_payment_id]);
+        if (dupCheck.rows.length > 0) {
+          return res.status(400).json({ error: 'This payment has already been used for another order' });
+        }
+      } catch (colErr) {
+        // Continue if column not created yet prior to running MIGRATION.sql
+      }
+    }
+
+    // Payment verification: mandatory for prepaid
+    if (pMethod !== 'cod') {
+      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        return res.status(400).json({ error: 'Missing Razorpay payment details for prepaid order' });
+      }
+      await verifyRazorpayPayment(razorpay_order_id, razorpay_payment_id, razorpay_signature, Math.round(calculatedTotal * 100));
+    } else if (razorpay_payment_id && razorpay_order_id && razorpay_signature) {
+      // Verify COD advance payment (₹1 = 100 paise)
+      await verifyRazorpayPayment(razorpay_order_id, razorpay_payment_id, razorpay_signature, 100);
+    }
+
+    const orderNumber = `ORD-${Date.now()}`;
+    const itemsJson = JSON.stringify(verifiedItems);
+    const addressJson = JSON.stringify(address);
+    const orderStatus = pMethod === 'cod' ? 'pending' : 'paid';
+
+    let result;
+    try {
+      result = await pool.query(
+        `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid, razorpay_payment_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid, razorpay_payment_id || null]
+      );
+    } catch (dbErr) {
+      if (dbErr.code === '42703') { // undefined_column before migration
+        result = await pool.query(
+          `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+          [orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid]
+        );
+      } else {
+        throw dbErr;
+      }
+    }
 
     // Credit vendors, record transactions, send vendor emails
     const vendorData = {}; // { vendor_id: { total, items: [] } }
