@@ -6,6 +6,7 @@ const nodemailer = require('nodemailer');
 const { calculateOrder, DELIVERY_CHARGE } = require('../utils/pricing');
 const { verifyRazorpayPayment } = require('../utils/razorpay');
 const { generateOTP, createOTP, verifyOTP } = require('../utils/otp');
+const { authLimiter } = require('../utils/rateLimiter');
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -241,7 +242,7 @@ function authMiddleware(req, res, next) {
 }
 
 // POST /api/auth/signup - send OTP
-router.post('/signup', async (req, res) => {
+router.post('/signup', authLimiter, async (req, res) => {
   const { name, email, phone, password } = req.body;
   if (!name || !email || !phone || !password)
     return res.status(400).json({ error: 'All fields are required' });
@@ -276,7 +277,7 @@ router.post('/signup', async (req, res) => {
 });
 
 // POST /api/auth/verify-otp
-router.post('/verify-otp', async (req, res) => {
+router.post('/verify-otp', authLimiter, async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
 
@@ -297,7 +298,7 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 // POST /api/auth/forgot-password
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', authLimiter, async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
 
@@ -317,7 +318,7 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // POST /api/auth/verify-reset-otp
-router.post('/verify-reset-otp', async (req, res) => {
+router.post('/verify-reset-otp', authLimiter, async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
 
@@ -352,7 +353,7 @@ router.post('/reset-password', async (req, res) => {
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 

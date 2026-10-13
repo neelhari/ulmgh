@@ -29,6 +29,11 @@ app.use(express.json({
   }
 }));
 
+app.set('trust proxy', 1);
+
+const { generalLimiter } = require('./utils/rateLimiter');
+app.use(generalLimiter);
+
 const path = require('path');
 
 app.use('/api/general', require('./routes/general'));

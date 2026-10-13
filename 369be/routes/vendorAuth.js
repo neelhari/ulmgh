@@ -10,6 +10,7 @@ const transporter = nodemailer.createTransport({
 });
 
 const { generateOTP, createOTP, verifyOTP } = require('../utils/otp');
+const { authLimiter } = require('../utils/rateLimiter');
 
 async function sendOTPEmail(email, otp, name) {
   await transporter.sendMail({
@@ -50,7 +51,7 @@ async function sendVendorPasswordResetOTPEmail(email, otp, name) {
 }
 
 // Registration
-router.post('/signup', async (req, res) => {
+router.post('/signup', authLimiter, async (req, res) => {
   const { name, store_name, email, phone, password, address, plan_id, payment_id } = req.body;
   if (!email || !password || !store_name) return res.status(400).json({ error: 'Missing required fields' });
   if (!plan_id || !payment_id) return res.status(400).json({ error: 'Subscription payment required' });
@@ -92,7 +93,7 @@ router.post('/signup', async (req, res) => {
 });
 
 // Verify OTP
-router.post('/verify-otp', async (req, res) => {
+router.post('/verify-otp', authLimiter, async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
 
@@ -131,7 +132,7 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 // Login
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   try {
     const result = await pool.query('SELECT * FROM vendors WHERE email = $1', [email]);
@@ -159,7 +160,7 @@ router.post('/login', async (req, res) => {
 });
 
 // POST /api/vendorAuth/forgot-password
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', authLimiter, async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
 
@@ -178,7 +179,7 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // POST /api/vendorAuth/verify-reset-otp
-router.post('/verify-reset-otp', async (req, res) => {
+router.post('/verify-reset-otp', authLimiter, async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
 

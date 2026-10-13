@@ -10,6 +10,7 @@ const transporter = nodemailer.createTransport({
 });
 
 const { generateOTP, createOTP, verifyOTP } = require('../utils/otp');
+const { authLimiter } = require('../utils/rateLimiter');
 
 async function sendSupportPasswordResetOTPEmail(email, otp, name) {
   await transporter.sendMail({
@@ -47,7 +48,7 @@ const supportAuthMiddleware = (req, res, next) => {
 };
 
 // POST /api/supportAuth/login
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
@@ -73,7 +74,7 @@ router.post('/login', async (req, res) => {
 });
 
 // POST /api/supportAuth/forgot-password
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', authLimiter, async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
 
@@ -92,7 +93,7 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // POST /api/supportAuth/verify-reset-otp
-router.post('/verify-reset-otp', async (req, res) => {
+router.post('/verify-reset-otp', authLimiter, async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
 
