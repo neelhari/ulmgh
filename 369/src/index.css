@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-brand-orange: #ff7b00; /* Brighter neon orange */
+  --color-brand-orange-glow: rgba(255, 123, 0, 0.2);
+  --color-brand-blue: #0047FF; /* Vibrant Blue for Primary actions */
+  --color-brand-light-bg: #f8f9fa; /* Light background */
+  --color-brand-glass-border: #e2e8f0; /* Light gray border */
+  --color-brand-text: #1f2937; /* Dark gray for text */
+  --color-brand-text-muted: #6b7280; /* Medium gray for muted text */
+  
+  /* Legacy colors */
+  --color-brand-maroon: #036e26;
+  --color-brand-gold: #C69C6D;
+  --color-brand-cream: #FDFBF7;
+  --color-brand-cream-light: #FFFFFF;
+  --color-brand-green: #045e1a;
+}
+
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+  }
+  
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  /* Card Utilities (formerly glass-panel) */
+  .glass-panel {
+    background-color: #ffffff;
+    border: 1px solid var(--color-brand-glass-border);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  }
+  
+  /* Remove all glassy effects */
+  .glass-panel, [class*="backdrop-blur"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  
+  .glow-text {
+    text-shadow: 0 0 10px var(--color-brand-orange-glow);
+  }
+}
+
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: var(--color-brand-light-bg);
+  color: var(--color-brand-text);
+}
+

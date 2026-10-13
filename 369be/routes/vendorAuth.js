@@ -1,0 +1,269 @@
+const router = require('express').Router();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const pool = require('../db');
+const nodemailer = require('nodemailer');
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+});
+
+function generateOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+async function sendOTPEmail(email, otp, name) {
+  await transporter.sendMail({
+    from: `"ULMGH369 Vendor" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: 'Your OTP for Vendor Signup',
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;border:1px solid #fe6603;border-radius:12px;">
+        <h2 style="color:#fe6603;">Welcome to ULMGH369 Vendor Portal</h2>
+        <p>Hi <strong>${name}</strong>,</p>
+        <p>Your OTP for verifying your vendor application is:</p>
+        <div style="font-size:36px;font-weight:bold;color:#ea580c;letter-spacing:8px;text-align:center;padding:16px;background:#fff7ed;border-radius:8px;margin:16px 0;">
+          ${otp}
+        </div>
+        <p style="color:#6b7280;font-size:13px;">This OTP is valid for 10 minutes. Do not share it with anyone.</p>
+      </div>
+    `,
+  });
+}
+
+async function sendVendorPasswordResetOTPEmail(email, otp, name) {
+  await transporter.sendMail({
+    from: `"ULMGH369 Vendor" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: 'Vendor Password Reset OTP',
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;border:1px solid #fe6603;border-radius:12px;">
+        <h2 style="color:#fe6603;">Vendor Password Reset Request</h2>
+        <p>Hi <strong>${name}</strong>,</p>
+        <p>Your OTP to reset your password is:</p>
+        <div style="font-size:36px;font-weight:bold;color:#fe6603;letter-spacing:8px;text-align:center;padding:16px;background:#fff7ed;border-radius:8px;margin:16px 0;">
+          ${otp}
+        </div>
+        <p style="color:#6b7280;font-size:13px;">This OTP is valid for 10 minutes. Do not share it with anyone.</p>
+      </div>
+    `,
+  });
+}
+
+// Registration
+router.post('/signup', async (req, res) => {
+  const { name, store_name, email, phone, password, address, plan_id, payment_id } = req.body;
+  if (!email || !password || !store_name) return res.status(400).json({ error: 'Missing required fields' });
+  if (!plan_id || !payment_id) return res.status(400).json({ error: 'Subscription payment required' });
+
+  try {
+    // Verify plan exists
+    const planRes = await pool.query('SELECT * FROM subscription_plans WHERE id=$1 AND is_active=TRUE', [plan_id]);
+    if (!planRes.rows.length) return res.status(400).json({ error: 'Invalid subscription plan' });
+
+    const check = await pool.query('SELECT id, status FROM vendors WHERE email = $1', [email]);
+    if (check.rows.length > 0) {
+      if (check.rows[0].status !== 'unverified') {
+        return res.status(400).json({ error: 'Email already exists and is verified/pending.' });
+      }
+    }
+
+    const password_hash = await bcrypt.hash(password, 10);
+    const otp = generateOTP();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    if (check.rows.length > 0) {
+      await pool.query(
+        'UPDATE vendors SET name=$1, store_name=$2, phone=$3, password_hash=$4, address=$5, pending_plan_id=$6, pending_payment_id=$7 WHERE email=$8',
+        [name, store_name, phone, password_hash, address, plan_id, payment_id, email]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO vendors (name, store_name, email, phone, password_hash, address, status, pending_plan_id, pending_payment_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'unverified', $7, $8)`,
+        [name, store_name, email, phone, password_hash, address, plan_id, payment_id]
+      );
+    }
+
+    await pool.query('DELETE FROM otps WHERE email=$1', [email]);
+    await pool.query('INSERT INTO otps (email, otp, expires_at) VALUES ($1,$2,$3)', [email, otp, expiresAt]);
+    await sendOTPEmail(email, otp, name);
+    res.json({ message: 'OTP sent to your email successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Verify OTP
+router.post('/verify-otp', async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM otps WHERE email=$1 AND otp=$2 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+      [email, otp]
+    );
+    if (!result.rows.length) return res.status(400).json({ error: 'Invalid or expired OTP' });
+
+    // Get vendor with pending subscription info
+    const vendorRes = await pool.query('SELECT id, pending_plan_id, pending_payment_id FROM vendors WHERE email=$1', [email]);
+    const vendor = vendorRes.rows[0];
+
+    // Activate subscription if payment was made
+    if (vendor && vendor.pending_plan_id && vendor.pending_payment_id) {
+      const planRes = await pool.query('SELECT * FROM subscription_plans WHERE id=$1', [vendor.pending_plan_id]);
+      if (planRes.rows.length) {
+        const plan = planRes.rows[0];
+        const expiresAt = new Date();
+        expiresAt.setMonth(expiresAt.getMonth() + plan.months);
+        await pool.query(
+          `INSERT INTO vendor_subscriptions (vendor_id, plan_id, plan_name, months, amount, payment_id, starts_at, expires_at, features)
+           VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7,$8)`,
+          [vendor.id, plan.id, plan.name, plan.months, plan.price, vendor.pending_payment_id, expiresAt, plan.features || {}]
+        );
+        await pool.query(
+          'UPDATE vendors SET subscription_expires_at=$1, pending_plan_id=NULL, pending_payment_id=NULL WHERE id=$2',
+          [expiresAt, vendor.id]
+        );
+      }
+    }
+
+    await pool.query("UPDATE vendors SET status='pending' WHERE email=$1", [email]);
+    await pool.query('DELETE FROM otps WHERE email=$1', [email]);
+    res.json({ message: 'Application verified. Awaiting admin approval.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Login
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const result = await pool.query('SELECT * FROM vendors WHERE email = $1', [email]);
+    if (result.rows.length === 0) return res.status(400).json({ error: 'Invalid credentials' });
+
+    const vendor = result.rows[0];
+    const match = await bcrypt.compare(password, vendor.password_hash);
+    if (!match) return res.status(400).json({ error: 'Invalid credentials' });
+
+    if (vendor.status === 'pending') {
+      return res.status(403).json({ error: 'The application is under review. Once admin approves you can login here.' });
+    }
+    if (vendor.status === 'rejected') {
+      return res.status(403).json({ error: 'Your vendor application has been rejected by the admin.' });
+    }
+    if (vendor.status === 'unverified') {
+      return res.status(403).json({ error: 'Please verify your email via the OTP sent during signup before logging in.' });
+    }
+
+    const token = jwt.sign({ id: vendor.id, role: 'vendor' }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, vendor: { id: vendor.id, name: vendor.name, email: vendor.email, store_name: vendor.store_name } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/vendorAuth/forgot-password
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+
+  try {
+    const vendor = await pool.query('SELECT name FROM vendors WHERE email=$1', [email]);
+    if (!vendor.rows.length) return res.status(404).json({ error: 'Vendor not found' });
+
+    const otp = generateOTP();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await pool.query('DELETE FROM otps WHERE email=$1', [email]);
+    await pool.query('INSERT INTO otps (email, otp, expires_at) VALUES ($1,$2,$3)', [email, otp, expiresAt]);
+
+    await sendVendorPasswordResetOTPEmail(email, otp, vendor.rows[0].name);
+    res.json({ message: 'OTP sent to your email' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/vendorAuth/verify-reset-otp
+router.post('/verify-reset-otp', async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM otps WHERE email=$1 AND otp=$2 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+      [email, otp]
+    );
+    if (!result.rows.length) return res.status(400).json({ error: 'Invalid or expired OTP' });
+    res.json({ success: true, message: 'OTP verified' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/vendorAuth/reset-password
+router.post('/reset-password', async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+  if (!email || !otp || !newPassword) return res.status(400).json({ error: 'Missing required fields' });
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM otps WHERE email=$1 AND otp=$2 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+      [email, otp]
+    );
+    if (!result.rows.length) return res.status(400).json({ error: 'Invalid or expired OTP' });
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE vendors SET password_hash=$1 WHERE email=$2', [hash, email]);
+    await pool.query('DELETE FROM otps WHERE email=$1', [email]);
+
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Auth Middleware for Vendors
+const vendorAuthMiddleware = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'No token provided' });
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.role !== 'vendor') return res.status(403).json({ error: 'Vendor access only' });
+    req.vendorId = decoded.id;
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+// Get current vendor
+router.get('/me', vendorAuthMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT v.id, v.name, v.store_name, v.email, v.phone, v.address, v.status,
+              v.wallet_balance, v.subscription_expires_at, v.created_at,
+              vs.plan_name, vs.months, vs.amount, vs.expires_at as sub_expires_at, vs.features as sub_features
+       FROM vendors v
+       LEFT JOIN LATERAL (
+         SELECT plan_name, months, amount, expires_at, features
+         FROM vendor_subscriptions
+         WHERE vendor_id = v.id
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) vs ON true
+       WHERE v.id = $1`,
+      [req.vendorId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Vendor not found' });
+    res.json({ vendor: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = { router, vendorAuthMiddleware };

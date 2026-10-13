@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment variables & secrets (NEVER push secrets)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Production builds
+dist/
+**/dist/
+build/
+**/build/
+
+# System & logs
+.DS_Store
+**/.DS_Store
+__MACOSX/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*

@@ -1,0 +1,7 @@
+for coupons ask you as the restriction is
+coupon name, dropdown(flat rupees or %) ,dropdown(min,qty or min.amount),applies for one time or multiple times
+expiry date (optional)
+create
+
+
+in vendor i created a coupon called SAVE20 but it's not applying

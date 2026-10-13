@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /checkout
+Disallow: /cart
+Disallow: /orders
+
+Sitemap: https://ulmgh369.com/sitemap.xml
