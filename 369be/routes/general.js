@@ -264,31 +264,11 @@ router.post('/orders', async (req, res) => {
     const addressJson = JSON.stringify(address);
     const orderStatus = pMethod === 'cod' ? 'pending' : 'paid';
 
-    let result;
-    try {
-      result = await pool.query(
-        `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid, razorpay_payment_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid, razorpay_payment_id || null]
-      );
-    } catch (dbErr) {
-      if (dbErr.code === '42703') { // undefined_column before migration
-        result = await pool.query(
-          `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-          [orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid]
-        );
-      } else {
-        throw dbErr;
-      }
-    }
-
-    // Credit vendors, record transactions, send vendor emails
+    // Prepare vendor earnings
     const vendorData = {}; // { vendor_id: { total, items: [] } }
     for (const item of verifiedItems) {
       if (item.product && item.product.vendor_id) {
         const vid = item.product.vendor_id;
-        // Skip crediting if vendor subscription has expired
         const subCheck = await pool.query(
           'SELECT subscription_expires_at FROM vendors WHERE id=$1',
           [vid]
@@ -301,27 +281,78 @@ router.post('/orders', async (req, res) => {
         vendorData[vid].items.push(item);
       }
     }
+
+    // Atomic transaction: Order insert + Stock deduction + Vendor wallet credit
+    const client = await pool.connect();
+    let result;
+    try {
+      await client.query('BEGIN');
+
+      try {
+        result = await client.query(
+          `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid, razorpay_payment_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+          [orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid, razorpay_payment_id || null]
+        );
+      } catch (dbErr) {
+        if (dbErr.code === '42703') { // undefined_column before migration
+          result = await client.query(
+            `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid]
+          );
+        } else {
+          throw dbErr;
+        }
+      }
+
+      // Atomic stock reduction (fails order if stock is insufficient)
+      for (const item of verifiedItems) {
+        const prodId = item.product?.id || item.id;
+        const qty = item.qty || 1;
+        const stockUpdate = await client.query(
+          'UPDATE products SET stock = stock - $1 WHERE id = $2 AND stock >= $1',
+          [qty, prodId]
+        );
+        if (stockUpdate.rowCount === 0) {
+          const prodName = item.product?.name || `Product ID ${prodId}`;
+          throw new Error(`Insufficient stock for "${prodName}". Order could not be completed.`);
+        }
+      }
+
+      // Credit vendor wallets and record transactions within the transaction
+      for (const [vid, data] of Object.entries(vendorData)) {
+        await client.query('UPDATE vendors SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2', [data.total, vid]);
+        await client.query(
+          'INSERT INTO vendor_transactions (vendor_id, type, amount, order_number, description) VALUES ($1, $2, $3, $4, $5)',
+          [vid, 'credit', data.total, orderNumber, `Order ${orderNumber} - ${data.items.length} item(s)`]
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    // Send vendor notifications
     for (const [vid, data] of Object.entries(vendorData)) {
-      await pool.query('UPDATE vendors SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2', [data.total, vid]);
-      await pool.query(
-        'INSERT INTO vendor_transactions (vendor_id, type, amount, order_number, description) VALUES ($1, $2, $3, $4, $5)',
-        [vid, 'credit', data.total, orderNumber, `Order ${orderNumber} - ${data.items.length} item(s)`]
-      );
-      // Send vendor email
       const vendorRes = await pool.query('SELECT name, email FROM vendors WHERE id = $1', [vid]);
       if (vendorRes.rows[0]) {
         sendOrderEmailToVendor(vendorRes.rows[0].email, vendorRes.rows[0].name, orderNumber, data.items, data.total, address, pMethod);
       }
     }
     
-    // Send emails
+    // Send customer and admin emails
     sendOrderEmailToAdmin(orderNumber, calculatedTotal, address, verifiedItems, pMethod);
     sendOrderEmailToCustomer(address?.email, orderNumber, calculatedTotal, address, verifiedItems, pMethod);
     
     res.json({ success: true, order: result.rows[0] });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to place order' });
+    console.error('Order placement error:', err);
+    res.status(err.statusCode || 400).json({ error: err.message || 'Failed to place order' });
   }
 });
 
