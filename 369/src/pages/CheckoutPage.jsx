@@ -262,11 +262,16 @@ export function CheckoutPage() {
       // Amount to charge online: ₹1 for COD, full amount for prepaid
       const chargeAmount = paymentMethod === 'cod' ? COD_ADVANCE : grandTotal;
 
-      // Create Razorpay Order
+      // Create Razorpay Order (amount calculated on server)
       const orderRes = await fetch(`${BACKEND_URL}/general/razorpay/order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: chargeAmount })
+        body: JSON.stringify({
+          items,
+          coupon_code: couponCode,
+          payment_method: paymentMethod,
+          amount: chargeAmount
+        })
       });
       const orderData = await orderRes.json();
 

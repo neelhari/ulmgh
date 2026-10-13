@@ -3,6 +3,7 @@ const pool = require('../db');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const { calculateOrder, DELIVERY_CHARGE } = require('../utils/pricing');
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -220,134 +221,8 @@ router.post('/orders', async (req, res) => {
   }
 
   try {
-    // 1. Recalculate prices from database and check stock
-    let subtotal = 0;
-    let totalQty = 0;
-    const verifiedItems = [];
-
-    for (const item of items) {
-      const productId = item.product?.id || item.id;
-      if (!productId) {
-        return res.status(400).json({ error: 'Invalid product in order' });
-      }
-
-      const prodRes = await pool.query('SELECT * FROM products WHERE id = $1', [productId]);
-      if (prodRes.rows.length === 0) {
-        return res.status(400).json({ error: `Product not found (ID: ${productId})` });
-      }
-
-      const dbProduct = prodRes.rows[0];
-      const qty = Math.max(1, parseInt(item.qty || item.quantity || 1, 10));
-
-      // Stock check: rejected if stock is less than requested qty or marked out of stock
-      if (dbProduct.stock < qty || dbProduct.stock_status === 'Out of Stock') {
-        return res.status(400).json({ error: `Product "${dbProduct.name}" is out of stock` });
-      }
-
-      // Check variant price in sizes JSON if applicable
-      let sizesList = [];
-      try {
-        sizesList = typeof dbProduct.sizes === 'string' ? JSON.parse(dbProduct.sizes) : (dbProduct.sizes || []);
-      } catch (e) {
-        sizesList = [];
-      }
-
-      const variantSizeName = typeof item.variant === 'string' ? item.variant : (item.variant?.size || item.size || null);
-      let unitPrice = parseFloat(dbProduct.price) || 0;
-
-      if (variantSizeName && Array.isArray(sizesList)) {
-        const matchedSize = sizesList.find(s => s && s.size && s.size.toString().toLowerCase() === variantSizeName.toString().toLowerCase());
-        if (matchedSize && matchedSize.price) {
-          unitPrice = parseFloat(matchedSize.price);
-        }
-      }
-
-      subtotal += unitPrice * qty;
-      totalQty += qty;
-
-      verifiedItems.push({
-        ...item,
-        qty,
-        price: unitPrice,
-        product: {
-          ...item.product,
-          id: dbProduct.id,
-          name: dbProduct.name,
-          vendor_id: dbProduct.vendor_id,
-          price: unitPrice,
-          image_url: dbProduct.image_url,
-        },
-        variant: typeof item.variant === 'object' && item.variant !== null
-          ? { ...item.variant, price: unitPrice }
-          : item.variant,
-      });
-    }
-
-    // 2. Coupon discount calculation (same logic as /coupon/verify)
-    const couponCode = (coupon_code || req.body.couponCode || '').trim();
-    let discount = 0;
-
-    if (couponCode) {
-      const adminResult = await pool.query(
-        'SELECT *, \'admin\' as source FROM coupons WHERE UPPER(code) = UPPER($1) AND is_active = true',
-        [couponCode]
-      );
-
-      const vendorResult = await pool.query(
-        "SELECT *, 'vendor' as source FROM offers WHERE UPPER(code) = UPPER($1) AND is_active = true AND offer_type = 'coupon'",
-        [couponCode]
-      );
-
-      const row = adminResult.rows[0] || vendorResult.rows[0];
-      if (!row) {
-        return res.status(400).json({ error: 'Invalid or expired coupon' });
-      }
-
-      if (row.expires_at && new Date(row.expires_at) < new Date()) {
-        return res.status(400).json({ error: 'This coupon has expired' });
-      }
-
-      let applicableSubtotal = 0;
-      let applicableQty = 0;
-
-      if (row.source === 'vendor' && row.vendor_id) {
-        verifiedItems.forEach(item => {
-          if (item.product?.vendor_id === row.vendor_id) {
-            applicableSubtotal += item.price * item.qty;
-            applicableQty += item.qty;
-          }
-        });
-        if (applicableQty === 0) {
-          return res.status(400).json({ error: 'This coupon is not applicable to any items in your cart.' });
-        }
-      } else {
-        applicableSubtotal = subtotal;
-        applicableQty = totalQty;
-      }
-
-      const restrictionType = row.restriction_type || row.min_type || 'min_amount';
-      const restrictionValue = parseFloat(row.restriction_value || row.min_value || row.min_order_value || 0);
-
-      if ((restrictionType === 'min_qty' || restrictionType === 'qty') && applicableQty < restrictionValue) {
-        return res.status(400).json({ error: `Minimum ${restrictionValue} applicable items required` });
-      }
-      if (restrictionType !== 'min_qty' && restrictionType !== 'qty' && applicableSubtotal < restrictionValue) {
-        return res.status(400).json({ error: `Minimum applicable order amount ₹${restrictionValue} required` });
-      }
-
-      const discountType = row.discount_type || 'percent';
-      const val = parseFloat(row.discount_value || row.discount_percent || 0);
-
-      if (discountType === 'percentage' || discountType === 'percent') {
-        discount = Math.round((applicableSubtotal * val) / 100);
-      } else {
-        discount = Math.min(val, applicableSubtotal);
-      }
-    }
-
-    // 3. Add delivery charge (₹1 when subtotal > 0) and compute final total
-    const deliveryCharge = subtotal > 0 ? 1 : 0;
-    const calculatedTotal = Math.max(0, subtotal - discount) + deliveryCharge;
+    // Recalculate prices from database, check stock, and apply coupons via shared pricing utility
+    const { verifiedItems, subtotal, discount, deliveryCharge, total: calculatedTotal } = await calculateOrder(items, coupon_code || req.body.couponCode);
 
     const orderNumber = `ORD-${Date.now()}`;
     const itemsJson = JSON.stringify(verifiedItems);
@@ -405,28 +280,41 @@ router.post('/orders', async (req, res) => {
 
 // POST /api/general/razorpay/order
 router.post('/razorpay/order', async (req, res) => {
-  const { amount } = req.body;
-  if (!amount) {
-    return res.status(400).json({ error: 'Amount is required' });
-  }
+  const { items, coupon_code, couponCode, payment_method, paymentMethod, amount } = req.body;
 
   try {
+    let chargeAmount = 0;
+    if (items && Array.isArray(items) && items.length > 0) {
+      const pMethod = payment_method || paymentMethod || 'prepaid';
+      if (pMethod === 'cod') {
+        chargeAmount = 1; // COD advance charge
+      } else {
+        const pricing = await calculateOrder(items, coupon_code || couponCode);
+        chargeAmount = pricing.total;
+      }
+    } else if (amount) {
+      // Fallback if client called without items
+      chargeAmount = parseFloat(amount) || 0;
+    } else {
+      return res.status(400).json({ error: 'Cart items or amount required' });
+    }
+
     const razorpay = new Razorpay({
       key_id: process.env.RAZORPAY_KEY_ID,
       key_secret: process.env.RAZORPAY_KEY_SECRET,
     });
 
     const options = {
-      amount: Math.round(amount * 100), // amount in the smallest currency unit
+      amount: Math.round(chargeAmount * 100), // amount in paise
       currency: 'INR',
       receipt: `receipt_${Date.now()}`
     };
 
     const order = await razorpay.orders.create(options);
-    res.json({ success: true, order });
+    res.json({ success: true, order, calculated_amount: chargeAmount });
   } catch (err) {
     console.error('Razorpay order creation error:', err);
-    res.status(500).json({ error: 'Failed to create Razorpay order' });
+    res.status(err.statusCode || 500).json({ error: err.message || 'Failed to create Razorpay order' });
   }
 });
 
