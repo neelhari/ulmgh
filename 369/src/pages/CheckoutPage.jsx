@@ -114,30 +114,48 @@ export function CheckoutPage() {
       return;
     }
     const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
-    if (!mapboxToken) {
-      showToast("Mapbox token not found in configuration.", "error");
-      return;
-    }
 
     setIsLocating(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
+        const { latitude, longitude } = pos.coords;
         try {
-          const { latitude, longitude } = pos.coords;
-          const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${mapboxToken}`);
-          const data = await res.json();
-          if (data?.features?.length > 0) {
-            const parsed = parseMapboxFeature(data.features[0]);
+          if (mapboxToken) {
+            try {
+              const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${mapboxToken}`);
+              const data = await res.json();
+              if (data?.features?.length > 0) {
+                const parsed = parseMapboxFeature(data.features[0]);
+                setAddress(prev => ({
+                  ...prev,
+                  ...parsed
+                }));
+                showToast("Address auto-detected!", "success");
+                setIsLocating(false);
+                return;
+              }
+            } catch (mbErr) {
+              console.warn("Mapbox geocode error, falling back to OpenStreetMap:", mbErr);
+            }
+          }
+
+          // OpenStreetMap Nominatim fallback
+          const nomRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const nomData = await nomRes.json();
+          if (nomData && nomData.address) {
             setAddress(prev => ({
               ...prev,
-              ...parsed
+              line1: nomData.address.road || nomData.address.suburb || nomData.display_name?.split(',')[0] || prev.line1,
+              city: nomData.address.city || nomData.address.town || nomData.address.village || prev.city,
+              state: nomData.address.state || prev.state,
+              pincode: nomData.address.postcode || prev.pincode
             }));
-            showToast("Address auto-detected using Mapbox!", "success");
+            showToast("Address auto-detected!", "success");
           } else {
             showToast("Could not determine exact street address.", "warning");
           }
         } catch (err) {
-          console.error("Mapbox reverse geocode error:", err);
+          console.error("Geocode error:", err);
           showToast("Failed to fetch location address.", "error");
         } finally {
           setIsLocating(false);

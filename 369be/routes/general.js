@@ -213,28 +213,157 @@ router.get('/products', async (req, res) => {
 
 // POST /api/general/orders (Checkout)
 router.post('/orders', async (req, res) => {
-  const { items, address, total, coupon_code, payment_method, advance_paid } = req.body;
+  const { items, address, coupon_code, payment_method } = req.body;
   
-  if (!items || items.length === 0) {
+  if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Cart is empty' });
   }
 
   try {
+    // 1. Recalculate prices from database and check stock
+    let subtotal = 0;
+    let totalQty = 0;
+    const verifiedItems = [];
+
+    for (const item of items) {
+      const productId = item.product?.id || item.id;
+      if (!productId) {
+        return res.status(400).json({ error: 'Invalid product in order' });
+      }
+
+      const prodRes = await pool.query('SELECT * FROM products WHERE id = $1', [productId]);
+      if (prodRes.rows.length === 0) {
+        return res.status(400).json({ error: `Product not found (ID: ${productId})` });
+      }
+
+      const dbProduct = prodRes.rows[0];
+      const qty = Math.max(1, parseInt(item.qty || item.quantity || 1, 10));
+
+      // Stock check: rejected if stock is less than requested qty or marked out of stock
+      if (dbProduct.stock < qty || dbProduct.stock_status === 'Out of Stock') {
+        return res.status(400).json({ error: `Product "${dbProduct.name}" is out of stock` });
+      }
+
+      // Check variant price in sizes JSON if applicable
+      let sizesList = [];
+      try {
+        sizesList = typeof dbProduct.sizes === 'string' ? JSON.parse(dbProduct.sizes) : (dbProduct.sizes || []);
+      } catch (e) {
+        sizesList = [];
+      }
+
+      const variantSizeName = typeof item.variant === 'string' ? item.variant : (item.variant?.size || item.size || null);
+      let unitPrice = parseFloat(dbProduct.price) || 0;
+
+      if (variantSizeName && Array.isArray(sizesList)) {
+        const matchedSize = sizesList.find(s => s && s.size && s.size.toString().toLowerCase() === variantSizeName.toString().toLowerCase());
+        if (matchedSize && matchedSize.price) {
+          unitPrice = parseFloat(matchedSize.price);
+        }
+      }
+
+      subtotal += unitPrice * qty;
+      totalQty += qty;
+
+      verifiedItems.push({
+        ...item,
+        qty,
+        price: unitPrice,
+        product: {
+          ...item.product,
+          id: dbProduct.id,
+          name: dbProduct.name,
+          vendor_id: dbProduct.vendor_id,
+          price: unitPrice,
+          image_url: dbProduct.image_url,
+        },
+        variant: typeof item.variant === 'object' && item.variant !== null
+          ? { ...item.variant, price: unitPrice }
+          : item.variant,
+      });
+    }
+
+    // 2. Coupon discount calculation (same logic as /coupon/verify)
+    const couponCode = (coupon_code || req.body.couponCode || '').trim();
+    let discount = 0;
+
+    if (couponCode) {
+      const adminResult = await pool.query(
+        'SELECT *, \'admin\' as source FROM coupons WHERE UPPER(code) = UPPER($1) AND is_active = true',
+        [couponCode]
+      );
+
+      const vendorResult = await pool.query(
+        "SELECT *, 'vendor' as source FROM offers WHERE UPPER(code) = UPPER($1) AND is_active = true AND offer_type = 'coupon'",
+        [couponCode]
+      );
+
+      const row = adminResult.rows[0] || vendorResult.rows[0];
+      if (!row) {
+        return res.status(400).json({ error: 'Invalid or expired coupon' });
+      }
+
+      if (row.expires_at && new Date(row.expires_at) < new Date()) {
+        return res.status(400).json({ error: 'This coupon has expired' });
+      }
+
+      let applicableSubtotal = 0;
+      let applicableQty = 0;
+
+      if (row.source === 'vendor' && row.vendor_id) {
+        verifiedItems.forEach(item => {
+          if (item.product?.vendor_id === row.vendor_id) {
+            applicableSubtotal += item.price * item.qty;
+            applicableQty += item.qty;
+          }
+        });
+        if (applicableQty === 0) {
+          return res.status(400).json({ error: 'This coupon is not applicable to any items in your cart.' });
+        }
+      } else {
+        applicableSubtotal = subtotal;
+        applicableQty = totalQty;
+      }
+
+      const restrictionType = row.restriction_type || row.min_type || 'min_amount';
+      const restrictionValue = parseFloat(row.restriction_value || row.min_value || row.min_order_value || 0);
+
+      if ((restrictionType === 'min_qty' || restrictionType === 'qty') && applicableQty < restrictionValue) {
+        return res.status(400).json({ error: `Minimum ${restrictionValue} applicable items required` });
+      }
+      if (restrictionType !== 'min_qty' && restrictionType !== 'qty' && applicableSubtotal < restrictionValue) {
+        return res.status(400).json({ error: `Minimum applicable order amount ₹${restrictionValue} required` });
+      }
+
+      const discountType = row.discount_type || 'percent';
+      const val = parseFloat(row.discount_value || row.discount_percent || 0);
+
+      if (discountType === 'percentage' || discountType === 'percent') {
+        discount = Math.round((applicableSubtotal * val) / 100);
+      } else {
+        discount = Math.min(val, applicableSubtotal);
+      }
+    }
+
+    // 3. Add delivery charge (₹1 when subtotal > 0) and compute final total
+    const deliveryCharge = subtotal > 0 ? 1 : 0;
+    const calculatedTotal = Math.max(0, subtotal - discount) + deliveryCharge;
+
     const orderNumber = `ORD-${Date.now()}`;
-    const itemsJson = JSON.stringify(items);
+    const itemsJson = JSON.stringify(verifiedItems);
     const addressJson = JSON.stringify(address);
     const pMethod = payment_method || 'prepaid';
-    const advancePaid = pMethod === 'cod' ? 1 : (parseFloat(total) || 0);
-    
+    const advancePaid = pMethod === 'cod' ? 1 : calculatedTotal;
+
     const result = await pool.query(
       `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [orderNumber, total, itemsJson, addressJson, 'pending', pMethod, advancePaid]
+      [orderNumber, calculatedTotal, itemsJson, addressJson, 'pending', pMethod, advancePaid]
     );
 
     // Credit vendors, record transactions, send vendor emails
     const vendorData = {}; // { vendor_id: { total, items: [] } }
-    for (const item of items) {
+    for (const item of verifiedItems) {
       if (item.product && item.product.vendor_id) {
         const vid = item.product.vendor_id;
         // Skip crediting if vendor subscription has expired
@@ -244,7 +373,7 @@ router.post('/orders', async (req, res) => {
         );
         const expiry = subCheck.rows[0]?.subscription_expires_at;
         if (expiry && new Date(expiry) < new Date()) continue;
-        const amt = item.qty * (item.variant?.price || item.product?.price || 0);
+        const amt = item.qty * item.price;
         if (!vendorData[vid]) vendorData[vid] = { total: 0, items: [] };
         vendorData[vid].total += amt;
         vendorData[vid].items.push(item);
@@ -264,8 +393,8 @@ router.post('/orders', async (req, res) => {
     }
     
     // Send emails
-    sendOrderEmailToAdmin(orderNumber, total, address, items, pMethod);
-    sendOrderEmailToCustomer(address?.email, orderNumber, total, address, items, pMethod);
+    sendOrderEmailToAdmin(orderNumber, calculatedTotal, address, verifiedItems, pMethod);
+    sendOrderEmailToCustomer(address?.email, orderNumber, calculatedTotal, address, verifiedItems, pMethod);
     
     res.json({ success: true, order: result.rows[0] });
   } catch (err) {

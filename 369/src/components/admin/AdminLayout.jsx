@@ -35,21 +35,28 @@ export function AdminLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    // For now, mock admin data if no actual auth is setup to avoid blocking
     const token = localStorage.getItem("token");
     if (!token) {
-      // Mocking admin login for demo purposes based on requirements
-      setAdmin({ name: "Admin User", email: "admin@ulmgh369.com" });
+      navigate("/login");
       return;
     }
 
     fetch(`${BACKEND_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Unauthorized");
+        return r.json();
+      })
       .then((d) => {
-        if (!d.user || d.user.role !== "admin") { navigate("/"); return; }
+        if (!d.user || d.user.role !== "admin") {
+          navigate("/login");
+          return;
+        }
         setAdmin(d.user);
       })
-      .catch(() => navigate("/login"));
+      .catch(() => {
+        localStorage.removeItem("token");
+        navigate("/login");
+      });
   }, [navigate]);
 
   const handleLogout = () => {
