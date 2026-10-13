@@ -390,6 +390,80 @@ router.post('/razorpay/verify', async (req, res) => {
   }
 });
 
+// POST /api/general/razorpay/webhook
+router.post('/razorpay/webhook', async (req, res) => {
+  const signature = req.headers['x-razorpay-signature'];
+  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    console.error('RAZORPAY_WEBHOOK_SECRET is not configured');
+    return res.status(500).json({ error: 'Webhook secret not configured' });
+  }
+
+  if (!signature) {
+    return res.status(400).json({ error: 'Missing webhook signature' });
+  }
+
+  try {
+    // Verify HMAC signature using raw request body
+    const rawBodyBuffer = req.rawBody || Buffer.from(JSON.stringify(req.body));
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(rawBodyBuffer)
+      .digest('hex');
+
+    if (expectedSignature !== signature) {
+      console.warn('Invalid Razorpay webhook signature');
+      return res.status(400).json({ error: 'Invalid webhook signature' });
+    }
+
+    const event = req.body.event;
+    const payload = req.body.payload;
+
+    // Handle payment.captured event
+    if (event === 'payment.captured' && payload?.payment?.entity) {
+      const payment = payload.payment.entity;
+      const paymentId = payment.id;
+      const orderId = payment.order_id;
+
+      let orderQuery;
+      try {
+        orderQuery = await pool.query(
+          `SELECT id, status, razorpay_payment_id FROM orders 
+           WHERE razorpay_payment_id = $1 
+              OR (razorpay_order_id = $2 AND razorpay_order_id IS NOT NULL)
+           LIMIT 1`,
+          [paymentId, orderId]
+        );
+      } catch (colErr) {
+        orderQuery = { rows: [] };
+      }
+
+      if (orderQuery.rows.length > 0) {
+        const order = orderQuery.rows[0];
+        // Idempotency: only update if not already marked paid
+        if (order.status !== 'paid') {
+          try {
+            await pool.query(
+              `UPDATE orders 
+               SET status = 'paid', razorpay_payment_id = COALESCE(razorpay_payment_id, $1) 
+               WHERE id = $2`,
+              [paymentId, order.id]
+            );
+          } catch (updateErr) {
+            await pool.query(`UPDATE orders SET status = 'paid' WHERE id = $1`, [order.id]);
+          }
+        }
+      }
+    }
+
+    res.status(200).json({ status: 'ok' });
+  } catch (err) {
+    console.error('Razorpay webhook processing error:', err);
+    res.status(500).json({ error: 'Webhook processing error' });
+  }
+});
+
 // POST /api/general/coupon/verify
 router.post('/coupon/verify', async (req, res) => {
   const { code, items, subtotal, qty } = req.body;
