@@ -1,7 +1,7 @@
 /**
  * LIVE BACKEND & NEON DATABASE AUTOMATED TEST SUITE
  * File: tests/live-test.js
- * Target: https://369be.vercel.app/api
+ * Target: https://ulmgh.vercel.app/api
  *
  * SAFETY RULES STRICTLY OBSERVED:
  * - Passwords, tokens, secrets, and connection strings are NEVER printed.
@@ -25,7 +25,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const dotenv = require('dotenv');
 
-const BASE_URL = 'https://369be.vercel.app/api';
+const BASE_URL = 'https://ulmgh.vercel.app/api';
 const ADMIN_EMAIL = 'lakshmi.umamaheswar@gmail.com';
 const OLD_ADMIN_PASS = 'Admin@1234';
 
@@ -41,6 +41,19 @@ function getDbConnectionString() {
     if (fs.existsSync(candidate)) {
       const parsed = dotenv.parse(fs.readFileSync(candidate, 'utf8'));
       const url = parsed.NEW_DATABASE_URL || parsed.DATABASE_URL;
+      if (url && url.includes('ep-solitary-block')) return url;
+    }
+  }
+  if (process.env.NEW_DATABASE_URL && process.env.NEW_DATABASE_URL.includes('ep-solitary-block')) {
+    return process.env.NEW_DATABASE_URL;
+  }
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('ep-solitary-block')) {
+    return process.env.DATABASE_URL;
+  }
+  for (const candidate of candidatePaths) {
+    if (fs.existsSync(candidate)) {
+      const parsed = dotenv.parse(fs.readFileSync(candidate, 'utf8'));
+      const url = parsed.NEW_DATABASE_URL || parsed.DATABASE_URL;
       if (url) return url;
     }
   }
@@ -51,6 +64,27 @@ const connectionString = getDbConnectionString();
 if (!connectionString) {
   console.error('❌ FATAL: Could not locate database URL in .env.newdb or .env');
   process.exit(1);
+}
+
+// Extract host names safely without credentials
+let dbHost = 'unknown';
+try {
+  dbHost = new URL(connectionString).host;
+} catch (e) {
+  console.error('❌ FATAL: Could not parse database URL host');
+  process.exit(1);
+}
+
+if (!dbHost.includes('ep-solitary-block')) {
+  console.error(`❌ FATAL: Database host "${dbHost}" does not match required NEW database host (ep-solitary-block). Aborting.`);
+  process.exit(1);
+}
+
+let apiHost = 'unknown';
+try {
+  apiHost = new URL(BASE_URL).host;
+} catch (e) {
+  apiHost = BASE_URL;
 }
 
 const pool = new Pool({
@@ -96,8 +130,8 @@ function record(testName, status, httpStatus, details = '') {
 async function runTestSuite() {
   console.log('===============================================================');
   console.log('🚀 STARTING LIVE BACKEND AUTOMATED TEST SUITE');
-  console.log(`🌐 Target: ${BASE_URL}`);
-  console.log(`🐘 Database: Neon DB connected`);
+  console.log(`🌐 Target API Host: ${apiHost} (${BASE_URL})`);
+  console.log(`🐘 Database Host:   ${dbHost}`);
   console.log('===============================================================\n');
 
   let adminPassword = null;
