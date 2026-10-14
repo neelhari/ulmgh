@@ -19,7 +19,7 @@ async function testNow() {
   console.log('Inserted into NEW DB:', testEmail);
 
   // Call login on live Vercel
-  const res = await fetch('https://369be.vercel.app/api/auth/login', {
+  const res = await fetch('https://ulmgh.vercel.app/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: testEmail, password: testPass })
