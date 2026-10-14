@@ -24,3 +24,10 @@ __MACOSX/
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
+
+# Database dumps and specific new db env
+*.dump
+backup.dump
+.env.newdb
+**/.env.newdb
+
