@@ -534,7 +534,7 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
             </svg>
           </div>
 
-          <div className="w-full max-w-lg mx-auto px-4 pt-10 relative z-10">
+          <div className="w-full max-w-lg mx-auto px-4 pt-safe pt-2 relative z-10">
             {/* Top Row: Logo & Icons */}
             <div className={`flex items-start justify-between ${hideSearch ? 'mb-0' : 'mb-4'}`}>
               <div className="flex items-center">

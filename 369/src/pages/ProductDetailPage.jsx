@@ -7,6 +7,7 @@ import { useCartStore } from '../store/useCartStore';
 import { useWishlistStore } from '../store/useWishlistStore';
 import { useStoreData } from '../store/useStoreData';
 import { motion, AnimatePresence } from 'framer-motion';
+import { openExternalLink } from '../utils/externalLink';
 
 export function ProductDetailPage() {
   const { id } = useParams();
@@ -191,7 +192,7 @@ export function ProductDetailPage() {
         {/* Image container */}
         <div className="relative w-full aspect-[3/4] bg-gray-100">
           {/* Back + actions */}
-          <div className="absolute top-safe pt-4 left-0 right-0 z-20 flex items-center justify-between px-4">
+          <div className="absolute top-0 pt-safe pt-3 left-0 right-0 z-20 flex items-center justify-between px-4">
             <button onClick={() => navigate(-1)}
               className="w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm">
               <ChevronLeft className="w-6 h-6 text-gray-800" />
@@ -459,7 +460,7 @@ export function ProductDetailPage() {
                           </span>
                           <span className="text-gray-900 font-semibold w-2/3 break-words">
                             {String(row.v).startsWith('http')
-                              ? <a href={row.v} target="_blank" rel="noreferrer" className="text-brand-orange hover:underline truncate block">View Document</a>
+                              ? <a href={row.v} onClick={(e) => { e.preventDefault(); openExternalLink(row.v); }} target="_blank" rel="noreferrer" className="text-brand-orange hover:underline truncate block">View Document</a>
                               : row.v}
                           </span>
                         </div>

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { App as CapApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
+import { StatusBar, Style } from '@capacitor/status-bar';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AppLayout } from './components/AppLayout';
 import { SplashScreen } from './components/SplashScreen';
@@ -91,6 +94,35 @@ function PageTransition({ children }) {
   );
 }
 
+function AppBackButtonHandler() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let backListener;
+    const addListener = async () => {
+      backListener = await CapApp.addListener('backButton', () => {
+        if (location.pathname === '/' || location.pathname === '') {
+          CapApp.exitApp();
+        } else {
+          navigate(-1);
+        }
+      });
+    };
+    addListener();
+
+    return () => {
+      if (backListener?.remove) {
+        backListener.remove();
+      }
+    };
+  }, [location.pathname, navigate]);
+
+  return null;
+}
+
 function AnimatedAppRoutes() {
   const location = useLocation();
   return (
@@ -136,6 +168,11 @@ function App() {
 
   useEffect(() => {
     fetchData();
+    if (Capacitor.isNativePlatform()) {
+      StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
+      StatusBar.setBackgroundColor({ color: '#ff8500' }).catch(() => {});
+      StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+    }
   }, [fetchData]);
 
   return (
@@ -143,6 +180,7 @@ function App() {
       {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
       <div style={{ opacity: showSplash ? 0 : 1 }} className="transition-opacity duration-300">
         <BrowserRouter>
+          <AppBackButtonHandler />
           <Routes>
             {/* Auth pages — no layout */}
             <Route path="/login" element={<LoginPage />} />

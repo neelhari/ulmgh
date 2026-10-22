@@ -384,7 +384,7 @@ export function CheckoutPage() {
   return (
     <div className="min-h-screen bg-transparent pb-36 font-sans">
       {/* Mobile App Bar */}
-      <div className="sticky top-0 z-50 bg-white border-b border-gray-100 px-4 py-4 flex items-center justify-center md:hidden">
+      <div className="sticky top-0 z-50 bg-white border-b border-gray-100 px-4 pt-safe pt-3 pb-3 flex items-center justify-center md:hidden">
         <button onClick={() => step === 3 ? setStep(2) : step === 2 ? setStep(1) : navigate('/cart')} className="absolute left-4 p-2 -ml-2 text-gray-900 hover:bg-gray-100 rounded-full transition-colors border border-transparent hover:border-gray-200">
           <ChevronLeft className="w-6 h-6" />
         </button>

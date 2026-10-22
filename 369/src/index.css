@@ -19,6 +19,9 @@
 }
 
 @layer utilities {
+  .pt-safe {
+    padding-top: max(12px, env(safe-area-inset-top, 0px));
+  }
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 20px);
   }
