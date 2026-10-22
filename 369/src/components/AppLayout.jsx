@@ -21,7 +21,7 @@ export function AppLayout({ children }) {
         <Toast />
         
         {/* Main Content Area */}
-        <main className={`flex-grow flex flex-col ${hideBottomNav ? 'pb-0' : 'pb-20 md:pb-0'}`}>
+        <main className={`flex-grow flex flex-col ${hideBottomNav ? 'pb-0' : 'pb-28 md:pb-0'}`}>
           {children}
         </main>
         

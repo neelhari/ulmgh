@@ -707,7 +707,7 @@ export function CheckoutPage() {
       </div>
 
       {/* Sticky Bottom Bar (Mobile Only) */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] mx-auto w-full">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 pt-4 pb-safe z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] mx-auto w-full">
         <div className="max-w-5xl mx-auto">
           <div className="flex items-end justify-between mb-4">
             <div>

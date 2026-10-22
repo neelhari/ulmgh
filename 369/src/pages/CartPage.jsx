@@ -141,7 +141,7 @@ export function CartPage() {
   const finalAmount = totalItemPrice + delivery - discount;
 
   return (
-    <div ref={container} className="min-h-screen bg-gray-50 pb-24 font-sans">
+    <div ref={container} className="min-h-screen bg-gray-50 pb-36 font-sans">
       <Header hideSearch={true} />
       
       {items.length === 0 ? (
@@ -280,7 +280,7 @@ export function CartPage() {
 
       {/* Fixed Bottom Bar */}
       {items.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 pb-safe z-50 flex items-center justify-between shadow-[0_-2px_10px_rgba(0,0,0,0.05)] md:max-w-3xl md:mx-auto md:px-4">
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 pt-3 pb-safe z-50 flex items-center justify-between shadow-[0_-2px_10px_rgba(0,0,0,0.05)] md:max-w-3xl md:mx-auto">
            <div className="flex flex-col pl-1">
               <span className="text-[11px] text-gray-600 font-bold mb-0.5">Total Amount</span>
               <span className="text-[18px] font-extrabold text-gray-900 leading-none">₹{finalAmount.toLocaleString('en-IN')}</span>

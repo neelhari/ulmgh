@@ -23,7 +23,7 @@
     padding-top: max(12px, env(safe-area-inset-top, 0px));
   }
   .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom, 20px);
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 16px));
   }
   
   .hide-scrollbar::-webkit-scrollbar {

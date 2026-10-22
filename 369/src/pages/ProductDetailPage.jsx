@@ -491,7 +491,7 @@ export function ProductDetailPage() {
       )}
 
       {/* ── MOBILE sticky action bar ── */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex gap-3 px-4 py-3 z-[60] shadow-[0_-10px_20px_rgba(0,0,0,0.05)] pb-safe">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex gap-3 px-4 pt-3 pb-safe z-[60] shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
         <button onClick={() => toggleWishlist(product.id)}
           className="w-12 shrink-0 flex flex-col items-center justify-center gap-1 active:scale-95 transition-all group">
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isWishlisted ? 'bg-red-50' : 'bg-gray-50 group-hover:bg-gray-100'}`}>
