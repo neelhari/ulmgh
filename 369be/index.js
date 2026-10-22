@@ -27,7 +27,10 @@ app.use(cors({
       process.env.FRONTEND_URL,
     ].filter(Boolean);
 
-    if (!origin || allowed.includes(origin) || /\.vercel\.app$/.test(origin)) {
+    // DEV ONLY - REMOVE BEFORE LAUNCH: allow local WiFi addresses (192.168.x.x:5173)
+    const isDevLocalWifi = /^http:\/\/192\.168\.\d+\.\d+:5173$/.test(origin);
+
+    if (!origin || allowed.includes(origin) || /\.vercel\.app$/.test(origin) || isDevLocalWifi) {
       callback(null, origin || '*');
     } else {
       callback(new Error('Not allowed by CORS'));
