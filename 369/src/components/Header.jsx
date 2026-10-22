@@ -510,57 +510,103 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
           )}
         </AnimatePresence>
 
-        <div className={effectiveHideSearch ? "h-[56px]" : "h-[108px]"} />
-        <header className="fixed top-0 left-0 z-50 w-full bg-gradient-to-r from-[#ff8500] to-[#ffba00] shadow-md pb-2.5">
+        <div className={effectiveHideSearch ? "h-[105px]" : "h-[220px]"} />
+        <header className={`fixed top-0 left-0 z-50 w-full pb-3 ${effectiveHideSearch ? 'bg-transparent' : 'bg-white shadow-sm border-b border-gray-100'}`}>
+          <div className="absolute top-0 left-0 w-full h-[170px] overflow-hidden pointer-events-none z-0">
+            <svg viewBox="0 0 375 170" className="w-full h-full" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#ff8500" />
+                  <stop offset="100%" stopColor="#ffba00" />
+                </linearGradient>
+                <filter id="waveGlow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="6" stdDeviation="8" floodColor="#ff8500" floodOpacity="0.4" />
+                </filter>
+              </defs>
+              {/* Full white background */}
+              <rect width="375" height={effectiveHideSearch ? "105" : "170"} fill="white" />
+              
+              {/* Back Cream Wave (Single Elegant S-Curve) */}
+              <path d="M 0,-50 L 375,-50 L 375,115 C 225,115 150,30 0,30 Z" fill="#ffedd5" opacity="0.8" />
+              
+              {/* Main Orange Wave (Single Elegant S-Curve) */}
+              <path d="M 0,-50 L 375,-50 L 375,100 C 225,100 150,20 0,20 Z" fill="url(#headerGrad)" filter="url(#waveGlow)" />
+            </svg>
+          </div>
+
           <div className="w-full max-w-lg mx-auto px-4 pt-safe pt-2 relative z-10">
             {/* Top Row: Logo & Icons */}
-            <div className={`flex items-center justify-between ${effectiveHideSearch ? 'h-10 mb-0' : 'h-10 mb-2'}`}>
+            <div className={`flex items-start justify-between ${effectiveHideSearch ? 'mb-0' : 'mb-4'}`}>
               <div className="flex items-center">
                 {title ? (
                   <div className="flex items-center gap-3">
                     <button onClick={() => navigate(-1)} className="bg-white/90 w-11 h-11 flex items-center justify-center rounded-full shadow-sm backdrop-blur-sm text-gray-900 border border-gray-100 active:scale-95 transition-transform" aria-label="Go back">
                       <ArrowLeft className="w-5 h-5" />
                     </button>
-                    <h1 className="text-white font-bold text-[17px] tracking-wide drop-shadow-sm">{title}</h1>
+                    <h1 className="text-gray-900 font-bold text-[17px] tracking-wide bg-white/80 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm">{title}</h1>
                   </div>
                 ) : (
-                  <Link to="/" className="flex items-center">
-                    <img src={logo} alt="Logo" className="h-9 w-auto object-contain drop-shadow-sm" />
+                  <Link to="/" className="-ml-2 mt-[-8px]">
+                    <img src={logo} alt="Logo" className="h-20 w-auto object-contain" />
                   </Link>
                 )}
               </div>
 
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2 mt-2 mr-1">
                 <button
                   onClick={() => navigate('/cart')}
-                  className="relative text-white w-11 h-11 flex items-center justify-center rounded-full hover:bg-white/10 active:scale-95 transition-all"
+                  className="relative text-gray-800 hover:text-gray-900 transition-colors w-11 h-11 flex items-center justify-center active:scale-95"
                   aria-label="Cart"
                 >
-                  <ShoppingCart className="w-6 h-6 text-white" />
+                  <ShoppingCart className="w-6 h-6" />
                   {cartCount > 0 && (
-                    <span className="absolute top-1 right-1 min-w-[18px] h-[18px] bg-blue-600 rounded-full text-white text-[10px] font-bold flex items-center justify-center border-2 border-[#ff8500] shadow-sm px-1">
+                    <span className="absolute top-1 right-1 w-4.5 h-4.5 bg-blue-500 rounded-full text-white text-[10px] font-bold flex items-center justify-center border-2 border-white shadow-sm">
                       {cartCount}
                     </span>
                   )}
                 </button>
                 <button
                   onClick={() => setMenuOpen(true)}
-                  className="relative text-white w-11 h-11 flex items-center justify-center rounded-full hover:bg-white/10 active:scale-95 transition-all"
+                  className="relative text-gray-800 hover:text-gray-900 transition-colors w-11 h-11 flex items-center justify-center active:scale-95"
                   aria-label="Menu"
                 >
-                  <Menu className="w-6 h-6 text-white" />
+                  <Menu className="w-7 h-7" />
                 </button>
               </div>
             </div>
 
+            {/* Location & Time Bar */}
+            {!effectiveHideSearch && (
+              <div className="flex items-center gap-3 mb-3">
+                <button
+                  onClick={handleLocationClick}
+                  className="flex-1 flex items-center justify-between bg-white border-2 border-pink-100 shadow-sm rounded-2xl px-4 py-2.5 active:scale-[0.98] transition-transform overflow-hidden"
+                >
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <div className="bg-gray-800 rounded-full p-1 shrink-0">
+                      <MapPin className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+                    </div>
+                    <span className="text-[13px] font-bold text-gray-800 truncate">
+                      {isFetchingLocation ? 'Locating...' : locationName}
+                    </span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-600 shrink-0 ml-1" strokeWidth={2} />
+                </button>
+                <div className="bg-[#991b54] text-white px-4 py-2.5 rounded-2xl flex items-baseline gap-1 shadow-md shrink-0 border border-[#801646]">
+                  <span className="font-extrabold text-[17px]">{estimatedTime.split(' ')[0]}</span>
+                  <span className="text-[12px] font-bold">{estimatedTime.split(' ')[1] || 'min'}</span>
+                </div>
+              </div>
+            )}
+
             {/* Search Bar */}
             {!effectiveHideSearch && (
               <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
                 <input
                   type="text"
                   placeholder="Search for products, brands and more"
-                  className="w-full bg-white border-0 rounded-xl h-10 py-2 pl-10 pr-10 text-[13px] text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white/50 shadow-sm"
+                  className="w-full bg-white border border-gray-200 rounded-xl py-3 pl-11 pr-11 text-[13px] text-gray-800 placeholder-gray-400 focus:outline-none focus:border-brand-orange/50 focus:ring-1 focus:ring-brand-orange/50 shadow-sm"
                   value={localSearch}
                   onChange={handleSearchChange}
                   onKeyDown={handleSearchEnter}
