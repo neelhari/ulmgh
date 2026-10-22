@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Heart, ShoppingCart, Star, Share2 } from 'lucide-react';
+import { Heart, ShoppingCart, Star, Share2, Image as ImageIcon } from 'lucide-react';
 import { useWishlistStore } from '../store/useWishlistStore';
 import { useCartStore } from '../store/useCartStore';
 import { useStoreData } from '../store/useStoreData';
@@ -88,6 +88,14 @@ export function getFirstImage(product, parsedSizes) {
   return getCategoryFallback(product);
 }
 
+// Transform Cloudinary URLs for fast listing thumbnails
+export function getOptimizedThumbnail(url) {
+  if (!url || typeof url !== 'string') return url;
+  if (!url.includes('cloudinary.com') || !url.includes('/upload/')) return url;
+  if (url.includes('/upload/f_auto,q_auto,w_400/')) return url;
+  return url.replace('/upload/', '/upload/f_auto,q_auto,w_400/');
+}
+
 export function getProductPrice(product, parsedSizes) {
   let defaultSize = { size: 'Standard', price: product.price || 0 };
   if (parsedSizes?.length > 0) {
@@ -125,7 +133,8 @@ export function ProductCard({ product, layout = 'grid' }) {
     }
   }
 
-  const firstImg = getFirstImage(product, parsedSizes);
+  const rawImg = getFirstImage(product, parsedSizes);
+  const firstImg = getOptimizedThumbnail(rawImg);
   const displayPrice = getProductPrice(product, parsedSizes);
   const { offers } = useStoreData();
 
@@ -186,10 +195,17 @@ export function ProductCard({ product, layout = 'grid' }) {
     return (
       <Link to={`/product/${product.id}`}
         className="flex gap-4 p-4 rounded-2xl mb-3 relative hover:shadow-[0_15px_40px_-10px_rgba(0,0,0,0.1)] hover:-translate-y-1 transition-all duration-300 border border-gray-100 group bg-white">
-        <div className="w-24 h-24 bg-gray-50 rounded-xl flex-shrink-0 overflow-hidden border border-gray-100 relative">
-          <img src={imgErr ? fallbackImg : firstImg} alt={product.name}
-            onError={() => setImgErr(true)}
-            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+        <div className="w-24 h-24 bg-gray-50 rounded-xl flex-shrink-0 overflow-hidden border border-gray-100 relative flex items-center justify-center">
+          {imgErr || !firstImg ? (
+            <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400">
+              <ImageIcon className="w-6 h-6 opacity-40" strokeWidth={1.5} />
+            </div>
+          ) : (
+            <img src={firstImg} alt={product.name}
+              loading="lazy"
+              onError={() => setImgErr(true)}
+              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
         </div>
         <div className="flex flex-col justify-center flex-grow pr-8">
@@ -243,14 +259,21 @@ export function ProductCard({ product, layout = 'grid' }) {
       </div>
 
       {/* Image */}
-      <div className="relative bg-gray-50 w-full aspect-[4/5] overflow-hidden rounded-b-2xl md:rounded-b-3xl">
+      <div className="relative bg-gray-50 w-full aspect-[4/5] overflow-hidden rounded-b-2xl md:rounded-b-3xl flex items-center justify-center">
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/10 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
-        <img
-          src={imgErr ? fallbackImg : firstImg}
-          alt={product.name}
-          onError={() => setImgErr(true)}
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out"
-        />
+        {imgErr || !firstImg ? (
+          <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400">
+            <ImageIcon className="w-8 h-8 opacity-40" strokeWidth={1.5} />
+          </div>
+        ) : (
+          <img
+            src={firstImg}
+            alt={product.name}
+            loading="lazy"
+            onError={() => setImgErr(true)}
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out"
+          />
+        )}
       </div>
 
       {/* Info */}

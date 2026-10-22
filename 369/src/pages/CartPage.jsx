@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Trash2, Plus, Minus, ShoppingCart, Tag, X, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart, Tag, X, CheckCircle2, AlertCircle, ArrowLeft, Image as ImageIcon } from 'lucide-react';
 import { Header } from '../components/Header';
 import { useCartStore } from '../store/useCartStore';
 import { useStoreData } from '../store/useStoreData';
@@ -8,6 +8,28 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000/api';
+
+function CartItemImage({ item }) {
+  const [hasError, setHasError] = useState(false);
+  const src = item.product.images && item.product.images.length > 0 ? item.product.images[0] : item.product.image_url;
+
+  if (hasError || !src) {
+    return (
+      <div className="w-full h-full bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
+        <ImageIcon className="w-6 h-6 opacity-40" strokeWidth={1.5} />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={item.product.name}
+      onError={() => setHasError(true)}
+      className="max-w-full max-h-full object-contain"
+    />
+  );
+}
 
 export function CartPage() {
   const navigate = useNavigate();
@@ -179,8 +201,8 @@ export function CartPage() {
                 </button>
                 
                 {/* Left: Image */}
-                <div className="w-[85px] h-[85px] shrink-0 p-1 flex items-center justify-center">
-                  <img src={item.product.images && item.product.images.length > 0 ? item.product.images[0] : item.product.image_url} alt={item.product.name} className="max-w-full max-h-full object-contain" />
+                <div className="w-[85px] h-[85px] shrink-0 p-1 flex items-center justify-center bg-gray-50 rounded-xl overflow-hidden border border-gray-100">
+                  <CartItemImage item={item} />
                 </div>
                 
                 {/* Right: Content */}

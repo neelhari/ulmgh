@@ -172,9 +172,9 @@ export function CategoryListingPage() {
               >
                 <div className={`w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center overflow-hidden mb-1 group-hover:scale-105 transition-all duration-300 flex-shrink-0 ${categoryId === cat.id.toString() ? 'ring-2 ring-offset-2 ring-[#022A21]/40 shadow-lg' : 'bg-gray-50 border border-gray-100'}`}>
                   {cat.image_url ? (
-                    <img src={cat.image_url} alt={cat.name} onError={(e) => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=200&q=80'; }} className="w-full h-full object-cover" />
+                    <img src={cat.image_url} alt={cat.name} loading="lazy" onError={(e) => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=200&q=80'; }} className="w-full h-full object-cover" />
                   ) : (
-                    <img src={imgAarti} alt="Cat" className="w-full h-full object-cover opacity-50 mix-blend-multiply" />
+                    <img src={imgAarti} alt="Cat" loading="lazy" className="w-full h-full object-cover opacity-50 mix-blend-multiply" />
                   )}
                 </div>
                 <span className={`text-[10px] sm:text-xs md:text-[13px] font-bold text-center leading-tight line-clamp-2 break-words w-full px-0.5 ${categoryId === cat.id.toString() ? 'text-[#022A21]' : 'text-gray-700'}`} title={cat.name}>

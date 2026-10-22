@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Share2, Heart, ShoppingCart, Star, MapPin, Zap, X, ChevronLeft, Truck, RefreshCcw, ShieldCheck, Package } from 'lucide-react';
+import { Share2, Heart, ShoppingCart, Star, MapPin, Zap, X, ChevronLeft, Truck, RefreshCcw, ShieldCheck, Package, Image as ImageIcon } from 'lucide-react';
 import { Header } from '../components/Header';
 import { ProductCard } from '../components/ProductCard';
 import { useCartStore } from '../store/useCartStore';
@@ -179,7 +179,6 @@ export function ProductDetailPage() {
   if (remainingItems.length > 0) {
     groupedSpecs.push({ title: "Other Details", items: remainingItems });
   }
-  const PLACEHOLDER = 'https://placehold.co/400x400/f5f5f5/999?text=No+Image';
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] pb-40 md:pb-12">
@@ -213,13 +212,19 @@ export function ProductDetailPage() {
           </div>
 
           {/* Main image */}
-          <div className="w-full h-full" onClick={() => setIsImageModalOpen(true)}>
-            <img
-              src={imgError ? PLACEHOLDER : (mainImg || productImages[0] || PLACEHOLDER)}
-              alt={product.name}
-              onError={() => setImgError(true)}
-              className="w-full h-full object-cover"
-            />
+          <div className="w-full h-full flex items-center justify-center" onClick={() => !imgError && setIsImageModalOpen(true)}>
+            {imgError || (!mainImg && productImages.length === 0) ? (
+              <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400">
+                <ImageIcon className="w-12 h-12 opacity-40" strokeWidth={1.5} />
+              </div>
+            ) : (
+              <img
+                src={mainImg || productImages[0]}
+                alt={product.name}
+                onError={() => setImgError(true)}
+                className="w-full h-full object-cover"
+              />
+            )}
           </div>
         </div>
 
@@ -229,7 +234,7 @@ export function ProductDetailPage() {
             {productImages.map((img, i) => (
               <button key={i} onClick={() => { setMainImg(img); setImgError(false); }}
                 className={`w-16 h-16 rounded-2xl flex-shrink-0 overflow-hidden ring-2 transition-all ${mainImg === img ? 'ring-brand-orange ring-offset-2' : 'ring-transparent hover:ring-gray-200'}`}>
-                <img src={img} alt={`thumb-${i}`} className="w-full h-full object-cover" onError={(e) => { e.target.src = PLACEHOLDER; }} />
+                <img src={img} alt={`thumb-${i}`} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               </button>
             ))}
           </div>
@@ -246,17 +251,17 @@ export function ProductDetailPage() {
             {productImages.length > 1 && (
               <div className="flex flex-col gap-2 w-[72px]">
                 {productImages.map((img, i) => (
-                  <button key={i} onClick={() => setMainImg(img)}
+                  <button key={i} onClick={() => { setMainImg(img); setImgError(false); }}
                     className={`w-16 h-16 rounded-xl border-2 p-1 flex-shrink-0 transition-all overflow-hidden ${mainImg === img ? 'border-brand-orange shadow-sm bg-orange-50' : 'border-gray-200 bg-white hover:border-brand-orange'}`}>
                     <img src={img} alt={`thumb-${i}`} className="w-full h-full object-cover rounded-lg"
-                      onError={(e) => { e.target.src = PLACEHOLDER; }} />
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                   </button>
                 ))}
               </div>
             )}
             {/* Main */}
             <div className="flex-1 relative bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-md aspect-square flex items-center justify-center cursor-zoom-in group"
-              onClick={() => setIsImageModalOpen(true)}>
+              onClick={() => !imgError && setIsImageModalOpen(true)}>
               <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
                 <button onClick={(e) => { e.stopPropagation(); toggleWishlist(product.id); }}
                   className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-gray-200 hover:scale-110 hover:border-red-400 transition-all shadow-sm">
@@ -272,9 +277,15 @@ export function ProductDetailPage() {
                   {discountPercent}% OFF
                 </div>
               )}
-              <img src={mainImg || productImages[0] || PLACEHOLDER} alt={product.name}
-                className="w-5/6 h-5/6 object-contain group-hover:scale-105 transition-transform duration-500"
-                onError={(e) => { e.target.src = PLACEHOLDER; }} />
+              {imgError || (!mainImg && productImages.length === 0) ? (
+                <div className="w-full h-full bg-gray-50 flex items-center justify-center text-gray-400">
+                  <ImageIcon className="w-16 h-16 opacity-40" strokeWidth={1.5} />
+                </div>
+              ) : (
+                <img src={mainImg || productImages[0]} alt={product.name}
+                  className="w-5/6 h-5/6 object-contain group-hover:scale-105 transition-transform duration-500"
+                  onError={() => setImgError(true)} />
+              )}
             </div>
           </div>
 
