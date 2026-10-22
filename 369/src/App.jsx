@@ -82,6 +82,10 @@ import { VendorOffersPage } from './pages/vendor/VendorOffersPage';
 import { VendorProductFormPage } from './pages/vendor/VendorProductFormPage';
 
 function PageTransition({ children }) {
+  if (Capacitor.isNativePlatform()) {
+    return <>{children}</>;
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 15 }}

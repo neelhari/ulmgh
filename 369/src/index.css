@@ -52,6 +52,24 @@
   }
 }
 
+/* Touch device polish: prevent sticky hover states on touch screens */
+@media (hover: none) and (pointer: coarse) {
+  .hover\:-translate-y-1:hover,
+  .hover\:-translate-y-0\.5:hover,
+  .hover\:-translate-y-2:hover,
+  .hover\:scale-105:hover,
+  .hover\:scale-110:hover,
+  .hover\:shadow-md:hover,
+  .hover\:shadow-lg:hover,
+  .hover\:shadow-xl:hover,
+  .group:hover .group-hover\:-translate-y-1,
+  .group:hover .group-hover\:scale-105,
+  .group:hover .group-hover\:scale-110 {
+    transform: none !important;
+    box-shadow: inherit !important;
+  }
+}
+
 body {
   font-family: 'Poppins', sans-serif;
   background-color: var(--color-brand-light-bg);
