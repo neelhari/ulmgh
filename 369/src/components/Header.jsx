@@ -277,6 +277,19 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
   const [locationName, setLocationName] = useState('Allow location access');
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
   const [estimatedTime, setEstimatedTime] = useState('8 min');
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 40) {
+        setIsScrolled(true);
+      } else {
+        setIsScrolled(false);
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleLocationClick = () => {
     if (!navigator.geolocation) {
@@ -511,8 +524,8 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
         </AnimatePresence>
 
         <div className={effectiveHideSearch ? "h-[105px]" : "h-[220px]"} />
-        <header className={`fixed top-0 left-0 z-50 w-full pb-3 ${effectiveHideSearch ? 'bg-transparent' : 'bg-white shadow-sm border-b border-gray-100'}`}>
-          <div className="absolute top-0 left-0 w-full h-[170px] overflow-hidden pointer-events-none z-0">
+        <header className={`fixed top-0 left-0 z-50 w-full transition-all duration-300 pb-3 ${effectiveHideSearch ? 'bg-transparent' : (isScrolled ? 'bg-white/95 backdrop-blur-md shadow-md border-b border-gray-100' : 'bg-white shadow-sm border-b border-gray-100')}`}>
+          <div className={`absolute top-0 left-0 w-full overflow-hidden pointer-events-none z-0 transition-all duration-300 ${isScrolled ? 'h-[75px] opacity-90' : 'h-[170px] opacity-100'}`}>
             <svg viewBox="0 0 375 170" className="w-full h-full" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -536,7 +549,7 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
 
           <div className="w-full max-w-lg mx-auto px-4 pt-safe pt-2 relative z-10">
             {/* Top Row: Logo & Icons */}
-            <div className={`flex items-start justify-between ${effectiveHideSearch ? 'mb-0' : 'mb-4'}`}>
+            <div className={`flex items-start justify-between transition-all duration-300 ${isScrolled ? 'mb-1.5' : (effectiveHideSearch ? 'mb-0' : 'mb-3')}`}>
               <div className="flex items-center">
                 {title ? (
                   <div className="flex items-center gap-3">
@@ -546,13 +559,13 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
                     <h1 className="text-gray-900 font-bold text-[17px] tracking-wide bg-white/80 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm">{title}</h1>
                   </div>
                 ) : (
-                  <Link to="/" className="-ml-2 mt-[-8px]">
-                    <img src={logo} alt="Logo" className="h-20 w-auto object-contain" />
+                  <Link to="/" className="flex items-center transition-all duration-300">
+                    <img src={logo} alt="Logo" className={`w-auto object-contain transition-all duration-300 ${isScrolled ? 'h-9 ml-0 mt-0' : 'h-20 -ml-2 mt-[-8px]'}`} />
                   </Link>
                 )}
               </div>
 
-              <div className="flex items-center gap-2 mt-2 mr-1">
+              <div className="flex items-center gap-2 mt-1 mr-1">
                 <button
                   onClick={() => navigate('/cart')}
                   className="relative text-gray-800 hover:text-gray-900 transition-colors w-11 h-11 flex items-center justify-center active:scale-95"
@@ -575,26 +588,28 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
               </div>
             </div>
 
-            {/* Location & Time Bar */}
+            {/* Location & Time Bar (Scroll-to-Collapse) */}
             {!effectiveHideSearch && (
-              <div className="flex items-center gap-3 mb-3">
-                <button
-                  onClick={handleLocationClick}
-                  className="flex-1 flex items-center justify-between bg-white border-2 border-pink-100 shadow-sm rounded-2xl px-4 py-2.5 active:scale-[0.98] transition-transform overflow-hidden"
-                >
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <div className="bg-gray-800 rounded-full p-1 shrink-0">
-                      <MapPin className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+              <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isScrolled ? 'max-h-0 opacity-0 mb-0 -translate-y-2 pointer-events-none' : 'max-h-20 opacity-100 mb-3 translate-y-0'}`}>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleLocationClick}
+                    className="flex-1 flex items-center justify-between bg-white border-2 border-pink-100 shadow-sm rounded-2xl px-4 py-2.5 active:scale-[0.98] transition-transform overflow-hidden"
+                  >
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <div className="bg-gray-800 rounded-full p-1 shrink-0">
+                        <MapPin className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+                      </div>
+                      <span className="text-[13px] font-bold text-gray-800 truncate">
+                        {isFetchingLocation ? 'Locating...' : locationName}
+                      </span>
                     </div>
-                    <span className="text-[13px] font-bold text-gray-800 truncate">
-                      {isFetchingLocation ? 'Locating...' : locationName}
-                    </span>
+                    <ChevronRight className="w-4 h-4 text-gray-600 shrink-0 ml-1" strokeWidth={2} />
+                  </button>
+                  <div className="bg-[#991b54] text-white px-4 py-2.5 rounded-2xl flex items-baseline gap-1 shadow-md shrink-0 border border-[#801646]">
+                    <span className="font-extrabold text-[17px]">{estimatedTime.split(' ')[0]}</span>
+                    <span className="text-[12px] font-bold">{estimatedTime.split(' ')[1] || 'min'}</span>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-600 shrink-0 ml-1" strokeWidth={2} />
-                </button>
-                <div className="bg-[#991b54] text-white px-4 py-2.5 rounded-2xl flex items-baseline gap-1 shadow-md shrink-0 border border-[#801646]">
-                  <span className="font-extrabold text-[17px]">{estimatedTime.split(' ')[0]}</span>
-                  <span className="text-[12px] font-bold">{estimatedTime.split(' ')[1] || 'min'}</span>
                 </div>
               </div>
             )}
@@ -606,7 +621,7 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
                 <input
                   type="text"
                   placeholder="Search for products, brands and more"
-                  className="w-full bg-white border border-gray-200 rounded-xl py-3 pl-11 pr-11 text-[13px] text-gray-800 placeholder-gray-400 focus:outline-none focus:border-brand-orange/50 focus:ring-1 focus:ring-brand-orange/50 shadow-sm"
+                  className="w-full bg-white border border-gray-200 rounded-xl py-2.5 pl-11 pr-11 text-[13px] text-gray-800 placeholder-gray-400 focus:outline-none focus:border-brand-orange/50 focus:ring-1 focus:ring-brand-orange/50 shadow-sm"
                   value={localSearch}
                   onChange={handleSearchChange}
                   onKeyDown={handleSearchEnter}
