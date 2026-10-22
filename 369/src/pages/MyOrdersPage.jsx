@@ -4,6 +4,7 @@ import { Package, ShoppingBag, FileText, RefreshCw } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useCartStore } from '../store/useCartStore';
 import { Header } from '../components/Header';
+import { Capacitor } from '@capacitor/core';
 
 const STATUS_COLORS = {
   pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
@@ -170,16 +171,19 @@ export function MyOrdersPage() {
               </tr>
           </table>
 
+          ${Capacitor.isNativePlatform() ? '' : `
           <div class="print-btn">
               <button class="btn-secondary" onclick="window.print()">🖨️ Print</button>
               <button class="btn-primary" onclick="window.print()">📥 Download PDF</button>
           </div>
+          `}
       </div>
       </body>
       </html>`;
   };
 
   const openInvoice = (order) => {
+    if (Capacitor.isNativePlatform()) return;
     const invoiceWindow = window.open("", "_blank");
     if (invoiceWindow) {
       invoiceWindow.document.open();
@@ -306,10 +310,12 @@ export function MyOrdersPage() {
 
                 {/* Footer Actions */}
                 <div className="flex flex-col sm:flex-row items-center justify-end gap-3 px-6 py-4 bg-orange-50/50 border-t border-brand-orange/20">
-                  <button onClick={() => openInvoice(order)}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white text-brand-orange border border-brand-orange/30 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-orange-50 transition-colors shadow-sm">
-                    <FileText className="w-4 h-4 text-brand-orange" /> Download Invoice
-                  </button>
+                  {!Capacitor.isNativePlatform() && (
+                    <button onClick={() => openInvoice(order)}
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white text-brand-orange border border-brand-orange/30 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-orange-50 transition-colors shadow-sm">
+                      <FileText className="w-4 h-4 text-brand-orange" /> Download Invoice
+                    </button>
+                  )}
                   <button onClick={() => handleReorder(order)}
                     className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#022A21] text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-[#033429] transition-colors shadow-sm">
                     <RefreshCw className="w-4 h-4" /> Reorder Items

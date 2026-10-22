@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ULMGH369</string>
+    <string name="title_activity_main">ULMGH369</string>
+    <string name="package_name">com.ulmgh.store</string>
+    <string name="custom_url_scheme">com.ulmgh.store</string>
+</resources>

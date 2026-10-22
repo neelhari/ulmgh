@@ -8,6 +8,7 @@ import { useStoreData } from '../store/useStoreData';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { motion } from 'framer-motion';
+import { openExternalLink } from '../utils/externalLink';
 
 import imgHeroBanner from '../assets/hero_banner.png';
 import imgHeroBannerPremium from '../assets/hero_banner_premium.jpg';
@@ -80,7 +81,7 @@ const AnimatedBannerCarousel = () => {
   const handleBannerClick = (banner) => {
     if (banner.link_url) {
       if (banner.link_url.startsWith('http')) {
-        window.open(banner.link_url, '_blank');
+        openExternalLink(banner.link_url);
       } else {
         window.location.href = banner.link_url;
       }

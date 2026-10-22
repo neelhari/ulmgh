@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, Phone, MapPin, ChevronRight } from 'lucide-react';
 import logoUrl from '../assets/logo.png';
+import { openExternalLink } from '../utils/externalLink';
 
 export function Footer() {
   return (
@@ -96,7 +97,7 @@ export function Footer() {
               { name: 'How to Shop (Video)', path: 'https://youtube.com/', external: true }
             ].map(link => (
               link.external ? (
-                <a key={link.name} href={link.path} target="_blank" rel="noopener noreferrer" className="group flex items-center text-[14px] text-gray-300 hover:text-brand-orange transition-colors w-fit">
+                <a key={link.name} href={link.path} onClick={(e) => { e.preventDefault(); openExternalLink(link.path); }} target="_blank" rel="noopener noreferrer" className="group flex items-center text-[14px] text-gray-300 hover:text-brand-orange transition-colors w-fit">
                   <ChevronRight className="w-4 h-4 mr-1 opacity-0 -ml-5 group-hover:opacity-100 group-hover:ml-0 transition-all text-brand-orange" />
                   <span className="group-hover:translate-x-1 transition-transform">{link.name}</span>
                 </a>

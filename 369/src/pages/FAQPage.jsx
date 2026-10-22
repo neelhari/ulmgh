@@ -3,6 +3,7 @@ import { ChevronDown, MessageCircle, PlayCircle, ShieldCheck, Truck, RotateCcw, 
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
 import { Link } from 'react-router-dom';
+import { openExternalLink } from '../utils/externalLink';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000/api';
 
@@ -59,7 +60,7 @@ export function FAQPage() {
           {/* Placeholder for Video. The user mentioned adding a youtube link in the future. */}
           <div className="w-full aspect-video bg-gray-200 rounded-xl relative overflow-hidden">
             <img src="https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&q=80" alt="Shopping Journey" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-            <a href="https://youtube.com" target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-20 flex items-center justify-center">
+            <a href="https://youtube.com" onClick={(e) => { e.preventDefault(); openExternalLink('https://youtube.com'); }} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-20 flex items-center justify-center">
               <div className="w-16 h-16 bg-[#fe6603] rounded-full flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
                 <PlayCircle className="w-8 h-8 text-white ml-1" />
               </div>

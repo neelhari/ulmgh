@@ -31,3 +31,11 @@ backup.dump
 .env.newdb
 **/.env.newdb
 
+# Android / Capacitor
+android/.gradle
+**/android/.gradle
+android/build
+**/android/build
+android/app/build
+**/android/app/build
+
