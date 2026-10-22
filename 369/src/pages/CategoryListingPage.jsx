@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { Search, Filter, X, Check } from 'lucide-react';
+import { Search, Filter, X, Check, ChevronDown } from 'lucide-react';
 import { Header } from '../components/Header';
 import { ProductCard } from '../components/ProductCard';
 import { useStoreData } from '../store/useStoreData';
@@ -12,6 +12,7 @@ export function CategoryListingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [showAllCategories, setShowAllCategories] = useState(false);
   const [sortBy, setSortBy] = useState('featured');
   const { products, categories, loading } = useStoreData();
   
@@ -152,36 +153,48 @@ export function CategoryListingPage() {
           <div className="flex items-center justify-between mb-5 px-1">
             <h2 className="text-[22px] md:text-[26px] font-extrabold text-gray-900 tracking-tight leading-tight">Explore Categories</h2>
           </div>
-          <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3 sm:gap-4 lg:gap-5">
+          <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 sm:gap-4 lg:gap-5">
             <div 
               onClick={() => handleCategoryChange('all')}
-              className={`h-full flex flex-col items-center justify-start gap-2.5 cursor-pointer group p-3 rounded-[20px] transition-all duration-300 hover:-translate-y-1 ${categoryId === 'all' ? 'bg-gradient-to-b from-[#e5f5f1] to-white shadow-md border border-[#022A21]/20' : 'bg-white shadow-sm border border-gray-100 hover:shadow-md hover:border-[#022A21]/20'}`}
+              className={`h-full flex flex-col items-center justify-start gap-1.5 sm:gap-2.5 cursor-pointer group p-1.5 sm:p-3 rounded-2xl sm:rounded-[20px] transition-all duration-300 hover:-translate-y-1 ${categoryId === 'all' ? 'bg-gradient-to-b from-[#e5f5f1] to-white shadow-md border border-[#022A21]/20' : 'bg-white shadow-sm border border-gray-100 hover:shadow-md hover:border-[#022A21]/20'}`}
             >
-              <div className={`w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center overflow-hidden mb-1 transition-all duration-300 ${categoryId === 'all' ? 'bg-[#022A21] shadow-lg shadow-[#022A21]/20 ring-2 ring-offset-2 ring-[#022A21]/20' : 'bg-gray-50 border border-gray-100 group-hover:border-gray-200 flex-shrink-0'}`}>
-                <span className={`text-xs md:text-sm font-extrabold text-center leading-tight ${categoryId === 'all' ? 'text-white' : 'text-gray-600'}`}>All<br/>Items</span>
+              <div className={`w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center overflow-hidden mb-1 transition-all duration-300 ${categoryId === 'all' ? 'bg-[#022A21] shadow-lg shadow-[#022A21]/20 ring-2 ring-offset-2 ring-[#022A21]/20' : 'bg-gray-50 border border-gray-100 group-hover:border-gray-200 flex-shrink-0'}`}>
+                <span className={`text-[11px] sm:text-xs md:text-sm font-extrabold text-center leading-tight ${categoryId === 'all' ? 'text-white' : 'text-gray-600'}`}>All<br/>Items</span>
               </div>
-              <span className={`text-[11px] sm:text-xs md:text-[13px] font-bold text-center leading-tight line-clamp-2 w-full ${categoryId === 'all' ? 'text-[#022A21]' : 'text-gray-700'}`} title="All Products">All Products</span>
+              <span className={`text-[10px] sm:text-xs md:text-[13px] font-bold text-center leading-tight line-clamp-2 break-words w-full px-0.5 ${categoryId === 'all' ? 'text-[#022A21]' : 'text-gray-700'}`} title="All Products">All Products</span>
             </div>
             
-            {categories.map(cat => (
+            {categories.map((cat, idx) => (
               <div 
                 key={cat.id}
                 onClick={() => handleCategoryChange(cat.id.toString())}
-                className={`h-full flex flex-col items-center justify-start gap-2.5 cursor-pointer group p-3 rounded-[20px] transition-all duration-300 hover:-translate-y-1 ${categoryId === cat.id.toString() ? 'bg-gradient-to-b from-[#e5f5f1] to-white shadow-md border border-[#022A21]/20' : 'bg-white shadow-sm border border-gray-100 hover:shadow-md hover:border-[#022A21]/20'}`}
+                className={`h-full flex flex-col items-center justify-start gap-1.5 sm:gap-2.5 cursor-pointer group p-1.5 sm:p-3 rounded-2xl sm:rounded-[20px] transition-all duration-300 hover:-translate-y-1 ${!showAllCategories && idx >= 7 ? 'hidden md:flex' : 'flex'} ${categoryId === cat.id.toString() ? 'bg-gradient-to-b from-[#e5f5f1] to-white shadow-md border border-[#022A21]/20' : 'bg-white shadow-sm border border-gray-100 hover:shadow-md hover:border-[#022A21]/20'}`}
               >
-                <div className={`w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center overflow-hidden mb-1 group-hover:scale-105 transition-all duration-300 flex-shrink-0 ${categoryId === cat.id.toString() ? 'ring-2 ring-offset-2 ring-[#022A21]/40 shadow-lg' : 'bg-gray-50 border border-gray-100'}`}>
+                <div className={`w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center overflow-hidden mb-1 group-hover:scale-105 transition-all duration-300 flex-shrink-0 ${categoryId === cat.id.toString() ? 'ring-2 ring-offset-2 ring-[#022A21]/40 shadow-lg' : 'bg-gray-50 border border-gray-100'}`}>
                   {cat.image_url ? (
                     <img src={cat.image_url} alt={cat.name} onError={(e) => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=200&q=80'; }} className="w-full h-full object-cover" />
                   ) : (
                     <img src={imgAarti} alt="Cat" className="w-full h-full object-cover opacity-50 mix-blend-multiply" />
                   )}
                 </div>
-                <span className={`text-[11px] sm:text-xs md:text-[13px] font-bold text-center leading-tight line-clamp-2 w-full px-1 ${categoryId === cat.id.toString() ? 'text-[#022A21]' : 'text-gray-700'}`} title={cat.name}>
+                <span className={`text-[10px] sm:text-xs md:text-[13px] font-bold text-center leading-tight line-clamp-2 break-words w-full px-0.5 ${categoryId === cat.id.toString() ? 'text-[#022A21]' : 'text-gray-700'}`} title={cat.name}>
                   {cat.name}
                 </span>
               </div>
             ))}
           </div>
+
+          {categories.length > 7 && (
+            <div className="md:hidden mt-3 text-center">
+              <button
+                onClick={() => setShowAllCategories(!showAllCategories)}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-full active:scale-95 transition-all shadow-sm"
+              >
+                <span>{showAllCategories ? 'Show less' : `See all (${categories.length})`}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showAllCategories ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 bg-white/90 backdrop-blur-md p-3 md:p-4 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-gray-100/50 gap-4 sticky top-[70px] z-30 transition-all hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)]">
