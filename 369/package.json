@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:live": "vite --host",
     "build": "vite build",
     "android:sync": "npm run build && npx cap sync",
+    "android:live": "node scripts/android-live.js",
+    "android:release-check": "node scripts/release-check.js",
     "lint": "oxlint",
     "preview": "vite preview"
   },
