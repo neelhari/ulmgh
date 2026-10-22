@@ -203,21 +203,23 @@ export function CartPage() {
                   </div>
                   
                   {/* Quantity Control */}
-                  <div className="absolute bottom-4 right-4 flex items-center border border-gray-200 rounded-[4px] overflow-hidden h-7 shadow-sm">
+                  <div className="absolute bottom-4 right-4 flex items-center border border-gray-200 rounded-lg overflow-hidden h-9 shadow-sm">
                      <button 
                        onClick={() => updateQuantity(item.product.id, item.variant, Math.max(1, item.qty - 1))}
-                       className="w-8 h-full flex items-center justify-center bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors"
+                       className="w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center bg-gray-50 text-gray-700 hover:bg-gray-100 active:bg-gray-200 active:scale-95 transition-all"
+                       aria-label="Decrease quantity"
                      >
-                       <Minus className="w-3 h-3" strokeWidth={2} />
+                       <Minus className="w-3.5 h-3.5" strokeWidth={2.5} />
                      </button>
-                     <span className="w-8 h-full flex items-center justify-center text-[13px] font-bold border-x border-gray-200 bg-white">
+                     <span className="w-9 h-9 flex items-center justify-center text-[13px] font-bold border-x border-gray-200 bg-white text-gray-900 select-none">
                        {item.qty}
                      </span>
                      <button 
                        onClick={() => updateQuantity(item.product.id, item.variant, item.qty + 1)}
-                       className="w-8 h-full flex items-center justify-center bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors"
+                       className="w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center bg-gray-50 text-gray-700 hover:bg-gray-100 active:bg-gray-200 active:scale-95 transition-all"
+                       aria-label="Increase quantity"
                      >
-                       <Plus className="w-3 h-3" strokeWidth={2} />
+                       <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
                      </button>
                   </div>
                 </div>
@@ -285,7 +287,7 @@ export function CartPage() {
               <span className="text-[11px] text-gray-600 font-bold mb-0.5">Total Amount</span>
               <span className="text-[18px] font-extrabold text-gray-900 leading-none">₹{finalAmount.toLocaleString('en-IN')}</span>
            </div>
-           <button onClick={handleCheckout} className="bg-[#fb641b] text-white text-[15px] font-bold w-[160px] py-3 rounded-sm shadow-sm hover:bg-[#f05a12] transition-colors">
+           <button onClick={handleCheckout} className="bg-[#fb641b] text-white text-[15px] font-bold w-[160px] py-3 rounded-xl shadow-md hover:bg-[#f05a12] active:scale-95 transition-all">
               PLACE ORDER
            </button>
         </div>

@@ -194,16 +194,19 @@ export function ProductDetailPage() {
           {/* Back + actions */}
           <div className="absolute top-0 pt-safe pt-3 left-0 right-0 z-20 flex items-center justify-between px-4">
             <button onClick={() => navigate(-1)}
-              className="w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm">
+              className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform"
+              aria-label="Go back">
               <ChevronLeft className="w-6 h-6 text-gray-800" />
             </button>
             <div className="flex gap-3">
               <button onClick={(e) => { e.stopPropagation(); toggleWishlist(product.id); }}
-                className="w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm">
+                className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform"
+                aria-label="Wishlist">
                 <Heart className={`w-5 h-5 ${isWishlisted ? 'fill-[#88313A] text-[#88313A]' : 'text-gray-800'}`} strokeWidth={isWishlisted ? 0 : 1.5} />
               </button>
               <button onClick={handleShare}
-                className="w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm">
+                className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform"
+                aria-label="Share">
                 <Share2 className="w-5 h-5 text-gray-800" strokeWidth={1.5} />
               </button>
             </div>
@@ -387,10 +390,12 @@ export function ProductDetailPage() {
             <span className="text-sm font-bold text-gray-700 uppercase tracking-wide block mb-3">Quantity</span>
             <div className="flex items-center gap-3">
               <button onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                className="w-10 h-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-700 hover:border-brand-orange hover:text-brand-orange font-bold text-xl transition-all">−</button>
+                className="w-11 h-11 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-700 hover:border-brand-orange hover:text-brand-orange active:scale-95 font-bold text-xl transition-all"
+                aria-label="Decrease quantity">−</button>
               <span className="text-lg font-bold text-gray-900 w-8 text-center">{quantity}</span>
               <button onClick={() => setQuantity(q => q + 1)}
-                className="w-10 h-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-700 hover:border-brand-orange hover:text-brand-orange font-bold text-xl transition-all">+</button>
+                className="w-11 h-11 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-700 hover:border-brand-orange hover:text-brand-orange active:scale-95 font-bold text-xl transition-all"
+                aria-label="Increase quantity">+</button>
             </div>
           </div>
 
