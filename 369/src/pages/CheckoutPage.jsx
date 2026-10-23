@@ -163,8 +163,17 @@ export function CheckoutPage() {
       },
       (err) => {
         console.error("Geolocation error:", err);
-        showToast("Location access denied or unavailable.", "warning");
+        let msg = "Location access denied or unavailable.";
+        if (err.code === 1) msg = "Location permission denied. Please allow location in phone settings.";
+        else if (err.code === 2) msg = "Location unavailable. Please ensure device GPS is turned on.";
+        else if (err.code === 3) msg = "Location request timed out. Please try again.";
+        showToast(msg, "warning");
         setIsLocating(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000
       }
     );
   };
@@ -384,11 +393,18 @@ export function CheckoutPage() {
   return (
     <div className="min-h-screen bg-transparent pb-36 font-sans">
       {/* Mobile App Bar */}
-      <div className="sticky top-0 z-50 bg-white border-b border-gray-100 px-4 pt-safe pt-3 pb-3 flex items-center justify-center md:hidden">
-        <button onClick={() => step === 3 ? setStep(2) : step === 2 ? setStep(1) : navigate('/cart')} className="absolute left-4 p-2 -ml-2 text-gray-900 hover:bg-gray-100 rounded-full transition-colors border border-transparent hover:border-gray-200">
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <h1 className="font-bold text-lg text-gray-900 tracking-wide">Checkout</h1>
+      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-100 md:hidden pt-safe">
+        <div className="h-14 px-4 flex items-center justify-between relative">
+          <button 
+            onClick={() => step === 3 ? setStep(2) : step === 2 ? setStep(1) : navigate('/cart')} 
+            className="w-10 h-10 -ml-1 text-gray-900 hover:bg-gray-100 rounded-full flex items-center justify-center transition-colors active:scale-95"
+            aria-label="Back"
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <h1 className="font-bold text-lg text-gray-900 tracking-wide absolute left-1/2 -translate-x-1/2">Checkout</h1>
+          <div className="w-10" />
+        </div>
       </div>
       
       <div className="p-4 md:p-8 space-y-4 md:space-y-8 md:max-w-7xl mx-auto">
@@ -706,71 +722,72 @@ export function CheckoutPage() {
         </div>
       </div>
 
-      {/* Sticky Bottom Bar (Mobile Only) */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 pt-4 pb-safe z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] mx-auto w-full">
-        <div className="max-w-5xl mx-auto">
-          <div className="flex items-end justify-between mb-4">
-            <div>
-              {step === 3 && paymentMethod === 'cod' ? (
-                <>
-                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Pay Now (Advance)</p>
-                  <p className="text-2xl font-bold text-green-600 leading-none">₹{COD_ADVANCE}</p>
-                  <p className="text-[10px] text-gray-500 mt-1">+ ₹{Math.max(0, codRemaining).toFixed(0)} at delivery</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Payable Amount</p>
-                  <p className="text-2xl font-bold text-gray-900 leading-none">₹{grandTotal.toFixed(2)}</p>
-                </>
-              )}
-            </div>
-          </div>
-          
-          {step === 1 ? (
-            <button 
-              disabled
-              className="w-full bg-gray-50 text-gray-400 font-bold text-base rounded-xl py-4 flex items-center justify-center cursor-not-allowed border border-gray-200"
-            >
-              Select Checkout Method
-            </button>
-          ) : step === 2 ? (
-            <button 
-              onClick={handleProceedToPayment}
-              className="w-full bg-gradient-to-r from-brand-orange to-yellow-500 text-white font-bold text-base rounded-xl py-4 shadow-lg hover:-translate-y-1 transition-all flex items-center justify-center gap-2 hover:shadow-brand-orange/30"
-            >
-              Proceed to Payment
-              <span className="w-1.5 h-1.5 bg-white rounded-full mx-1 opacity-50" />
-              Step 3
-            </button>
-          ) : (
-            <button
-              onClick={handlePlaceOrder}
-              disabled={isPlacingOrder}
-              className={`w-full text-white font-bold text-base rounded-xl py-4 flex items-center justify-center gap-2 transition-all ${
-                isPlacingOrder ? 'opacity-70 cursor-not-allowed shadow-none bg-gray-100 border border-gray-200 text-gray-500' :
-                paymentMethod === 'cod'
-                  ? 'bg-green-600 shadow-md hover:-translate-y-1'
-                  : 'bg-gradient-to-r from-brand-orange to-yellow-500 shadow-lg hover:-translate-y-1 hover:shadow-brand-orange/30'
-              }`}
-            >
-              {isPlacingOrder ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
-                  Placing Order...
+      {/* Sticky Bottom Bar (Mobile Only - Compact Modern Layout) */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200/80 px-4 py-2.5 pb-safe z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+        <div className="max-w-lg mx-auto flex items-center justify-between gap-3">
+          {/* Left: Price summary */}
+          <div className="min-w-0 flex-1">
+            {step === 3 && paymentMethod === 'cod' ? (
+              <div>
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Pay Advance</span>
+                <span className="text-xl font-extrabold text-green-600 leading-tight block">₹{COD_ADVANCE}</span>
+                <span className="text-[10px] text-gray-400 block truncate">+ ₹{Math.max(0, codRemaining).toFixed(0)} on delivery</span>
+              </div>
+            ) : (
+              <div>
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Payable Amount</span>
+                <span className="text-xl font-extrabold text-gray-900 leading-tight block">₹{grandTotal.toFixed(2)}</span>
+                <div className="flex items-center gap-1 mt-0.5 text-gray-400">
+                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                  <span className="text-[10px] font-medium text-gray-500">100% Secure</span>
                 </div>
-              ) : paymentMethod === 'cod' ? (
-                <>
-                  <Banknote className="w-5 h-5" />
-                  Pay ₹{COD_ADVANCE} Advance & Place Order
-                </>
-              ) : 'Confirm Order'}
-            </button>
-          )}
-        
-        <div className="flex items-center justify-center gap-2 mt-4">
-          <ShieldCheck className="w-4 h-4 text-gray-400" />
-          <span className="text-[10px] text-gray-500 font-medium">Your order is safe and secure</span>
-        </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Action Button */}
+          <div className="shrink-0 w-auto min-w-[170px] max-w-[210px]">
+            {step === 1 ? (
+              <button 
+                disabled
+                className="w-full bg-gray-100 text-gray-400 font-bold text-sm rounded-xl py-3 px-4 flex items-center justify-center cursor-not-allowed border border-gray-200"
+              >
+                Select Option
+              </button>
+            ) : step === 2 ? (
+              <button 
+                onClick={handleProceedToPayment}
+                className="w-full bg-gradient-to-r from-brand-orange to-yellow-500 text-white font-bold text-sm rounded-xl py-3 px-4 shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5"
+              >
+                <span>Payment</span>
+                <span className="opacity-75">•</span>
+                <span className="text-xs">Step 3 →</span>
+              </button>
+            ) : (
+              <button
+                onClick={handlePlaceOrder}
+                disabled={isPlacingOrder}
+                className={`w-full text-white font-bold text-sm rounded-xl py-3 px-4 flex items-center justify-center gap-1.5 transition-all active:scale-95 ${
+                  isPlacingOrder ? 'opacity-70 cursor-not-allowed shadow-none bg-gray-100 border border-gray-200 text-gray-500' :
+                  paymentMethod === 'cod'
+                    ? 'bg-green-600 shadow-md'
+                    : 'bg-gradient-to-r from-brand-orange to-yellow-500 shadow-md'
+                }`}
+              >
+                {isPlacingOrder ? (
+                  <div className="flex items-center gap-1.5">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Placing...</span>
+                  </div>
+                ) : paymentMethod === 'cod' ? (
+                  <>
+                    <Banknote className="w-4 h-4" />
+                    <span>Pay ₹{COD_ADVANCE}</span>
+                  </>
+                ) : 'Confirm Order'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
