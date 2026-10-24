@@ -11,6 +11,7 @@ const transporter = nodemailer.createTransport({
 
 const { generateOTP, createOTP, verifyOTP } = require('../utils/otp');
 const { authLimiter } = require('../utils/rateLimiter');
+const { verifyRazorpayPayment } = require('../utils/razorpay');
 
 async function sendOTPEmail(email, otp, name) {
   await transporter.sendMail({
@@ -52,14 +53,31 @@ async function sendVendorPasswordResetOTPEmail(email, otp, name) {
 
 // Registration
 router.post('/signup', authLimiter, async (req, res) => {
-  const { name, store_name, email, phone, password, address, plan_id, payment_id } = req.body;
+  const { name, store_name, email, phone, password, address, plan_id, payment_id, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+  const payId = razorpay_payment_id || payment_id;
+  const orderId = razorpay_order_id;
+  const signature = razorpay_signature;
+
   if (!email || !password || !store_name) return res.status(400).json({ error: 'Missing required fields' });
-  if (!plan_id || !payment_id) return res.status(400).json({ error: 'Subscription payment required' });
+  if (!plan_id || !payId || !orderId || !signature) {
+    return res.status(400).json({ error: 'Subscription payment verification details required (plan_id, razorpay_order_id, razorpay_payment_id, razorpay_signature)' });
+  }
 
   try {
-    // Verify plan exists
+    // 1. Verify plan exists
     const planRes = await pool.query('SELECT * FROM subscription_plans WHERE id=$1 AND is_active=TRUE', [plan_id]);
     if (!planRes.rows.length) return res.status(400).json({ error: 'Invalid subscription plan' });
+    const plan = planRes.rows[0];
+
+    // 2. Block reuse of the same razorpay_payment_id
+    const existingPayment = await pool.query('SELECT id FROM vendor_subscriptions WHERE payment_id = $1', [payId]);
+    if (existingPayment.rows.length > 0) {
+      return res.status(400).json({ error: 'This payment ID has already been used' });
+    }
+
+    // 3. Verify HMAC signature, status is captured/authorized, and amount in paise matches plan price
+    const expectedAmountPaise = Math.round(Number(plan.price) * 100);
+    await verifyRazorpayPayment(orderId, payId, signature, expectedAmountPaise);
 
     const check = await pool.query('SELECT id, status FROM vendors WHERE email = $1', [email]);
     if (check.rows.length > 0) {
@@ -72,23 +90,46 @@ router.post('/signup', authLimiter, async (req, res) => {
     const otp = generateOTP();
 
     if (check.rows.length > 0) {
-      await pool.query(
-        'UPDATE vendors SET name=$1, store_name=$2, phone=$3, password_hash=$4, address=$5, pending_plan_id=$6, pending_payment_id=$7 WHERE email=$8',
-        [name, store_name, phone, password_hash, address, plan_id, payment_id, email]
-      );
+      try {
+        await pool.query(
+          'UPDATE vendors SET name=$1, store_name=$2, phone=$3, password_hash=$4, address=$5, pending_plan_id=$6, pending_payment_id=$7, pending_order_id=$8 WHERE email=$9',
+          [name, store_name, phone, password_hash, address, plan_id, payId, orderId, email]
+        );
+      } catch (err) {
+        if (err.code === '42703') { // pending_order_id doesn't exist yet before migration
+          await pool.query(
+            'UPDATE vendors SET name=$1, store_name=$2, phone=$3, password_hash=$4, address=$5, pending_plan_id=$6, pending_payment_id=$7 WHERE email=$8',
+            [name, store_name, phone, password_hash, address, plan_id, payId, email]
+          );
+        } else {
+          throw err;
+        }
+      }
     } else {
-      await pool.query(
-        `INSERT INTO vendors (name, store_name, email, phone, password_hash, address, status, pending_plan_id, pending_payment_id)
-         VALUES ($1, $2, $3, $4, $5, $6, 'unverified', $7, $8)`,
-        [name, store_name, email, phone, password_hash, address, plan_id, payment_id]
-      );
+      try {
+        await pool.query(
+          `INSERT INTO vendors (name, store_name, email, phone, password_hash, address, status, pending_plan_id, pending_payment_id, pending_order_id)
+           VALUES ($1, $2, $3, $4, $5, $6, 'unverified', $7, $8, $9)`,
+          [name, store_name, email, phone, password_hash, address, plan_id, payId, orderId]
+        );
+      } catch (err) {
+        if (err.code === '42703') { // pending_order_id doesn't exist yet before migration
+          await pool.query(
+            `INSERT INTO vendors (name, store_name, email, phone, password_hash, address, status, pending_plan_id, pending_payment_id)
+             VALUES ($1, $2, $3, $4, $5, $6, 'unverified', $7, $8)`,
+            [name, store_name, email, phone, password_hash, address, plan_id, payId]
+          );
+        } else {
+          throw err;
+        }
+      }
     }
 
     await createOTP(email, otp);
     await sendOTPEmail(email, otp, name);
     res.json({ message: 'OTP sent to your email successfully.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

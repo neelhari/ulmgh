@@ -2,14 +2,7 @@ const router = require('express').Router();
 const pool = require('../db');
 const { authMiddleware } = require('./auth');
 const { vendorAuthMiddleware } = require('./vendorAuth');
-const Razorpay = require('razorpay');
-
-function getRazorpay() {
-  return new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET,
-  });
-}
+const { verifyRazorpayPayment, getRazorpayInstance } = require('../utils/razorpay');
 
 function adminOnly(req, res, next) {
   if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin access only' });
@@ -24,8 +17,9 @@ router.post('/create-order', async (req, res) => {
     const planRes = await pool.query('SELECT * FROM subscription_plans WHERE id=$1 AND is_active=TRUE', [plan_id]);
     if (!planRes.rows.length) return res.status(404).json({ error: 'Plan not found' });
     const plan = planRes.rows[0];
-    const order = await getRazorpay().orders.create({
-      amount: Math.round(plan.price * 100),
+    const amountInPaise = Math.round(Number(plan.price) * 100);
+    const order = await getRazorpayInstance().orders.create({
+      amount: amountInPaise,
       currency: 'INR',
       receipt: `sub_${plan_id}_${Date.now()}`,
     });
@@ -48,12 +42,29 @@ router.get('/plans', async (req, res) => {
 // VENDOR — POST /api/subscriptions/subscribe
 // Called after successful Razorpay payment with payment_id + plan_id
 router.post('/subscribe', vendorAuthMiddleware, async (req, res) => {
-  const { plan_id, payment_id } = req.body;
-  if (!plan_id || !payment_id) return res.status(400).json({ error: 'plan_id and payment_id required' });
+  const { plan_id, payment_id, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+  const payId = razorpay_payment_id || payment_id;
+  const orderId = razorpay_order_id;
+  const signature = razorpay_signature;
+
+  if (!plan_id || !payId || !orderId || !signature) {
+    return res.status(400).json({ error: 'plan_id, razorpay_order_id, razorpay_payment_id, and razorpay_signature are required' });
+  }
+
   try {
     const planRes = await pool.query('SELECT * FROM subscription_plans WHERE id=$1 AND is_active=TRUE', [plan_id]);
     if (!planRes.rows.length) return res.status(404).json({ error: 'Plan not found' });
     const plan = planRes.rows[0];
+
+    // 1. Block reuse of the same razorpay_payment_id
+    const existingPayment = await pool.query('SELECT id FROM vendor_subscriptions WHERE payment_id = $1', [payId]);
+    if (existingPayment.rows.length > 0) {
+      return res.status(400).json({ error: 'This payment ID has already been used' });
+    }
+
+    // 2. Verify Razorpay HMAC signature, status (captured/authorized), and amount in paise
+    const expectedAmountPaise = Math.round(Number(plan.price) * 100);
+    await verifyRazorpayPayment(orderId, payId, signature, expectedAmountPaise);
 
     // Calculate expiry — extend from current expiry if still active
     const vendorRes = await pool.query('SELECT subscription_expires_at FROM vendors WHERE id=$1', [req.vendorId]);
@@ -62,30 +73,62 @@ router.post('/subscribe', vendorAuthMiddleware, async (req, res) => {
     const expiresAt = new Date(base);
     expiresAt.setMonth(expiresAt.getMonth() + plan.months);
 
-    await pool.query(
-      `INSERT INTO vendor_subscriptions (vendor_id, plan_id, plan_name, months, amount, payment_id, starts_at, expires_at, features)
-       VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7,$8)`,
-      [req.vendorId, plan.id, plan.name, plan.months, plan.price, payment_id, expiresAt, plan.features || {}]
-    );
+    try {
+      await pool.query(
+        `INSERT INTO vendor_subscriptions (vendor_id, plan_id, plan_name, months, amount, payment_id, order_id, starts_at, expires_at, features)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),$8,$9)`,
+        [req.vendorId, plan.id, plan.name, plan.months, plan.price, payId, orderId, expiresAt, plan.features || {}]
+      );
+    } catch (insertErr) {
+      if (insertErr.code === '42703') { // column order_id doesn't exist yet before migration
+        await pool.query(
+          `INSERT INTO vendor_subscriptions (vendor_id, plan_id, plan_name, months, amount, payment_id, starts_at, expires_at, features)
+           VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7,$8)`,
+          [req.vendorId, plan.id, plan.name, plan.months, plan.price, payId, expiresAt, plan.features || {}]
+        );
+      } else {
+        throw insertErr;
+      }
+    }
+
     await pool.query('UPDATE vendors SET subscription_expires_at=$1 WHERE id=$2', [expiresAt, req.vendorId]);
 
     res.json({ message: 'Subscription activated', expires_at: expiresAt });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
 // VENDOR — POST /api/subscriptions/subscribe-signup
 // Called during signup (before vendor record exists) — stores payment against email
 router.post('/subscribe-signup', async (req, res) => {
-  const { email, plan_id, payment_id } = req.body;
-  if (!email || !plan_id || !payment_id) return res.status(400).json({ error: 'email, plan_id and payment_id required' });
+  const { email, plan_id, payment_id, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+  const payId = razorpay_payment_id || payment_id;
+  const orderId = razorpay_order_id;
+  const signature = razorpay_signature;
+
+  if (!plan_id || !payId || !orderId || !signature) {
+    return res.status(400).json({ error: 'plan_id, razorpay_order_id, razorpay_payment_id, and razorpay_signature are required' });
+  }
+
   try {
     const planRes = await pool.query('SELECT * FROM subscription_plans WHERE id=$1 AND is_active=TRUE', [plan_id]);
     if (!planRes.rows.length) return res.status(404).json({ error: 'Plan not found' });
-    res.json({ ok: true, plan: planRes.rows[0] });
+    const plan = planRes.rows[0];
+
+    // Block reuse of razorpay_payment_id
+    const existingPayment = await pool.query('SELECT id FROM vendor_subscriptions WHERE payment_id = $1', [payId]);
+    if (existingPayment.rows.length > 0) {
+      return res.status(400).json({ error: 'This payment ID has already been used' });
+    }
+
+    // Verify payment with Razorpay
+    const expectedAmountPaise = Math.round(Number(plan.price) * 100);
+    await verifyRazorpayPayment(orderId, payId, signature, expectedAmountPaise);
+
+    res.json({ ok: true, plan: planRes.rows[0], payment_id: payId, order_id: orderId });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
