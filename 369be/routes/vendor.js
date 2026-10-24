@@ -404,4 +404,89 @@ router.post('/upload', (req, res) => {
   });
 });
 
+// --- Vendor Account Deletion ---
+// DELETE /api/vendor/account
+router.delete('/account', async (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ error: 'Password is required to delete your account' });
+  }
+
+  try {
+    const vendorRes = await pool.query('SELECT * FROM vendors WHERE id = $1', [req.vendorId]);
+    if (vendorRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Vendor not found' });
+    }
+    const vendor = vendorRes.rows[0];
+
+    // 1. Verify password
+    const match = await bcrypt.compare(password, vendor.password_hash);
+    if (!match) {
+      return res.status(400).json({ error: 'Incorrect password' });
+    }
+
+    // 2. Refuse if wallet balance is above 0
+    const balance = parseFloat(vendor.wallet_balance || 0);
+    if (balance > 0) {
+      return res.status(400).json({
+        error: `Cannot delete account with an active wallet balance of ₹${balance.toLocaleString()}. Please contact admin to withdraw your remaining balance first.`
+      });
+    }
+
+    // 3. Anonymize vendor record
+    const anonymizedEmail = `deleted_vendor_${vendor.id}_${Date.now()}@deleted.ulmgh.invalid`;
+    try {
+      await pool.query(
+        `UPDATE vendors
+         SET name = 'Deleted Vendor',
+             store_name = 'Closed Store',
+             email = $1,
+             phone = '',
+             address = '',
+             password_hash = '',
+             status = 'inactive',
+             is_deleted = TRUE,
+             deleted_at = NOW()
+         WHERE id = $2`,
+        [anonymizedEmail, req.vendorId]
+      );
+    } catch (updateErr) {
+      if (updateErr.code === '42703') { // is_deleted / deleted_at columns not created yet before migration
+        await pool.query(
+          `UPDATE vendors
+           SET name = 'Deleted Vendor',
+               store_name = 'Closed Store',
+               email = $1,
+               phone = '',
+               address = '',
+               password_hash = '',
+               status = 'inactive'
+           WHERE id = $2`,
+          [anonymizedEmail, req.vendorId]
+        );
+      } else {
+        throw updateErr;
+      }
+    }
+
+    // 4. Deactivate vendor products
+    await pool.query(
+      "UPDATE products SET is_active = FALSE, status = 'archived' WHERE vendor_id = $1",
+      [req.vendorId]
+    );
+
+    // 5. Deactivate support agents
+    await pool.query(
+      "UPDATE support_agents SET is_active = FALSE WHERE scope = 'vendor' AND vendor_id = $1",
+      [req.vendorId]
+    );
+
+    // Orders and transaction history remain intact for accounting
+    res.json({ success: true, message: 'Vendor account successfully deleted and closed' });
+  } catch (err) {
+    console.error('Account deletion error:', err);
+    res.status(500).json({ error: 'Failed to delete account. Please try again later.' });
+  }
+});
+
 module.exports = router;
