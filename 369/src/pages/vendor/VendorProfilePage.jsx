@@ -57,7 +57,13 @@ export function VendorProfilePage() {
         handler: async (response) => {
           const subRes = await fetch(`${BACKEND_URL}/subscriptions/subscribe`, {
             method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plan_id: selectedPlan.id, payment_id: response.razorpay_payment_id }),
+            body: JSON.stringify({
+              plan_id: selectedPlan.id,
+              payment_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            }),
           });
           const subData = await subRes.json();
           if (!subRes.ok) return toast.error(subData.error);

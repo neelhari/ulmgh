@@ -216,8 +216,13 @@ export function VendorProductFormPage() {
   const uploadFile = async (file) => {
     const fd = new FormData();
     fd.append('image', file);
-    const res = await fetch(`${BACKEND_URL}/admin/upload`, { method: 'POST', body: fd });
+    const res = await fetch(`${BACKEND_URL}/vendor/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
     return data.url;
   };
 

@@ -34,6 +34,7 @@ export function VendorSignupPage() {
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [paymentDone, setPaymentDone] = useState(false);
   const [paymentId, setPaymentId] = useState('');
+  const [razorpayData, setRazorpayData] = useState({ order_id: '', payment_id: '', signature: '' });
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
   const [acceptedGuidelines, setAcceptedGuidelines] = useState(false);
@@ -76,6 +77,11 @@ export function VendorSignupPage() {
         order_id: data.order.id,
         handler: (response) => {
           setPaymentId(response.razorpay_payment_id);
+          setRazorpayData({
+            order_id: response.razorpay_order_id,
+            payment_id: response.razorpay_payment_id,
+            signature: response.razorpay_signature,
+          });
           setPaymentDone(true);
           toast.success('Payment successful!');
         },
@@ -111,7 +117,11 @@ export function VendorSignupPage() {
           email: formData.email, phone: formData.phone,
           password: formData.password,
           store_name: formData.storeName, address: formData.storeAddress,
-          plan_id: selectedPlan.id, payment_id: paymentId,
+          plan_id: selectedPlan.id,
+          payment_id: razorpayData.payment_id || paymentId,
+          razorpay_order_id: razorpayData.order_id,
+          razorpay_payment_id: razorpayData.payment_id || paymentId,
+          razorpay_signature: razorpayData.signature,
         };
         const res = await fetch(`${BACKEND_URL}/vendorAuth/signup`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
