@@ -234,7 +234,7 @@ router.post('/verify-reset-otp', authLimiter, async (req, res) => {
 });
 
 // POST /api/vendorAuth/reset-password
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', authLimiter, async (req, res) => {
   const { email, otp, newPassword } = req.body;
   if (!email || !otp || !newPassword) return res.status(400).json({ error: 'Missing required fields' });
 
