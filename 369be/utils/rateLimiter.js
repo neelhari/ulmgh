@@ -73,6 +73,14 @@ const authLimiter = createLimiter({
   prefix: 'rl:auth:'
 });
 
+// Login limiter: 20 attempts per 15 minutes per IP (OTP and forgot-password remain strict)
+const loginLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many login attempts. Please try again after 15 minutes.',
+  prefix: 'rl:login:'
+});
+
 // Generous general limiter for all API traffic: 300 requests per 15 minutes per IP
 const generalLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
@@ -83,6 +91,7 @@ const generalLimiter = createLimiter({
 
 module.exports = {
   authLimiter,
+  loginLimiter,
   generalLimiter,
   isDistributed: !!redisClient,
 };

@@ -6,7 +6,7 @@ const nodemailer = require('nodemailer');
 const { calculateOrder, DELIVERY_CHARGE } = require('../utils/pricing');
 const { verifyRazorpayPayment } = require('../utils/razorpay');
 const { generateOTP, createOTP, verifyOTP } = require('../utils/otp');
-const { authLimiter } = require('../utils/rateLimiter');
+const { authLimiter, loginLimiter } = require('../utils/rateLimiter');
 const { validate, signupSchema, loginSchema, addressSchema, orderSchema } = require('../utils/validation');
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -356,7 +356,7 @@ router.post('/reset-password', async (req, res) => {
 });
 
 // POST /api/auth/login
-router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
+router.post('/login', loginLimiter, validate(loginSchema), async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
