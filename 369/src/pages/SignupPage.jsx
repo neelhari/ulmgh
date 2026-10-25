@@ -161,7 +161,7 @@ export function SignupPage() {
                 </button>
               </form>
 
-              {/* Google button below form */}
+              {/* "Continue with Google" button temporarily hidden - can be restored later
               <div className="flex items-center gap-3 mt-5 mb-4">
                 <div className="flex-1 h-px bg-gray-100" />
                 <span className="text-[11px] text-gray-400 font-medium px-1">or continue with</span>
@@ -172,6 +172,7 @@ export function SignupPage() {
                 <GoogleIcon />
                 Continue with Google
               </button>
+              */}
 
               <div className="flex items-center gap-3 mt-5 mb-4">
                 <div className="flex-1 h-px bg-gray-100" />

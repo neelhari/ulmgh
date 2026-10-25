@@ -177,20 +177,20 @@ export function LoginPage() {
                 </button>
               </form>
 
-              {/* Divider */}
+              {/* "Continue with Google" button temporarily hidden - can be restored later
               <div className="flex items-center gap-3 mt-5 mb-4">
                 <div className="flex-1 h-px bg-gray-100" />
                 <span className="text-[11px] text-gray-400 font-medium px-1">or continue with</span>
                 <div className="flex-1 h-px bg-gray-100" />
               </div>
 
-              {/* Google Button */}
               <button onClick={loginWithGoogle}
                 className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold py-3.5 rounded-2xl text-[15px] transition-all shadow-sm hover:shadow-md active:scale-[0.98] mb-5">
                 <GoogleIcon />
                 Continue with Google
               </button>
-              <Link to="/signup" className="flex items-center justify-center w-full border-2 border-brand-blue/25 text-brand-blue font-bold py-3.5 rounded-2xl text-[15px] hover:bg-brand-blue/5 hover:border-brand-blue/50 transition-all">
+              */}
+              <Link to="/signup" className="flex items-center justify-center w-full border-2 border-brand-blue/25 text-brand-blue font-bold py-3.5 rounded-2xl text-[15px] hover:bg-brand-blue/5 hover:border-brand-blue/50 transition-all mt-4">
                 Create Account
               </Link>
             </>
