@@ -14,6 +14,7 @@ import { useWishlistStore } from '../store/useWishlistStore';
 import { useStoreData } from '../store/useStoreData';
 import { getFirstImage, getProductPrice } from './ProductCard';
 import logo from '../assets/logo.png';
+import { Capacitor } from '@capacitor/core';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000/api';
 
@@ -36,7 +37,7 @@ function AvatarDropdown({ user, onLogout }) {
     { icon: MapPin, label: 'My Addresses', path: '/my-addresses' },
     { icon: Heart, label: 'Wishlist', path: '/wishlist' },
     { icon: Settings, label: 'Account Settings', path: '/account-settings' },
-    ...(user?.role === 'admin' ? [{ icon: Shield, label: 'Admin Panel', path: '/admin' }] : []),
+    ...(!Capacitor.isNativePlatform() && user?.role === 'admin' ? [{ icon: Shield, label: 'Admin Panel', path: '/admin' }] : []),
   ];
 
   return (

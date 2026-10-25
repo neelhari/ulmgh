@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Mail, Phone, MapPin, ChevronRight } from 'lucide-react';
 import logoUrl from '../assets/logo.png';
 import { openExternalLink } from '../utils/externalLink';
+import { Capacitor } from '@capacitor/core';
 
 export function Footer() {
   return (
@@ -93,7 +94,7 @@ export function Footer() {
               { name: 'Shipping Policy', path: '/shipping-policy' },
               { name: 'Replacements & Exchanges', path: '/returns-policy' },
               { name: 'FAQ & Help', path: '/faqs' },
-              { name: 'Vendor Guidelines', path: '/vendor-guidelines' },
+              ...(!Capacitor.isNativePlatform() ? [{ name: 'Vendor Guidelines', path: '/vendor-guidelines' }] : []),
               { name: 'How to Shop (Video)', path: 'https://youtube.com/', external: true }
             ].map(link => (
               link.external ? (
