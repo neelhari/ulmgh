@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Phone, Lock, Eye, EyeOff, Check, LogOut } from 'lucide-react';
+import { User, Mail, Phone, Lock, Eye, EyeOff, Check, LogOut, Trash2, AlertTriangle, X } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../utils/api';
 import { Header } from '../components/Header';
@@ -14,6 +14,10 @@ export function AccountSettingsPage() {
   const [profileMsg, setProfileMsg] = useState('');
   const [passMsg, setPassMsg] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!token) { navigate('/login'); return; }
@@ -47,6 +51,22 @@ export function AccountSettingsPage() {
     }
     setSaving(false);
     setTimeout(() => setPassMsg(''), 3000);
+  };
+
+  const handleDeleteAccount = async (e) => {
+    e.preventDefault();
+    if (!deletePassword) return setDeleteError('Password is required');
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await api.delete('/auth/account', { data: { password: deletePassword } });
+      setShowDeleteModal(false);
+      logout();
+      navigate('/');
+    } catch (err) {
+      setDeleteError(err.response?.data?.error || 'Failed to delete account');
+      setDeleting(false);
+    }
   };
 
   return (
@@ -135,14 +155,90 @@ export function AccountSettingsPage() {
         </div>
 
         {/* Danger Zone */}
-        <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-5">
-          <h2 className="text-sm font-bold text-red-600 mb-3">Danger Zone</h2>
+        <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-5 space-y-3">
+          <h2 className="text-sm font-bold text-red-600 mb-1">Danger Zone</h2>
           <button onClick={() => { logout(); navigate('/'); }}
             className="w-full flex items-center justify-center gap-2 border border-red-200 text-red-500 font-bold py-3 rounded-xl text-sm hover:bg-red-50 transition-colors">
             <LogOut className="w-4 h-4" /> Logout from all devices
           </button>
+          <button onClick={() => { setShowDeleteModal(true); setDeletePassword(''); setDeleteError(''); }}
+            className="w-full flex items-center justify-center gap-2 bg-red-50 border border-red-200 text-red-600 font-bold py-3 rounded-xl text-sm hover:bg-red-100 transition-colors">
+            <Trash2 className="w-4 h-4" /> Delete my account
+          </button>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 relative">
+            <button
+              onClick={() => { setShowDeleteModal(false); setDeletePassword(''); setDeleteError(''); }}
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 text-red-600 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Delete Account</h3>
+            </div>
+
+            <p className="text-sm text-gray-600 leading-relaxed mb-4">
+              This action is permanent and cannot be undone. All your personal details, saved addresses, and active sessions will be deleted.
+            </p>
+
+            <form onSubmit={handleDeleteAccount} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-700 block mb-1">
+                  Enter your password to confirm
+                </label>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="Your current password"
+                  required
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-gray-50"
+                />
+              </div>
+
+              {deleteError && (
+                <p className="text-xs font-semibold text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-100">
+                  {deleteError}
+                </p>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowDeleteModal(false); setDeletePassword(''); setDeleteError(''); }}
+                  disabled={deleting}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deleting || !deletePassword}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {deleting ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    'Delete Account'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

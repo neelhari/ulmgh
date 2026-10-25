@@ -365,6 +365,7 @@ router.post('/login', loginLimiter, validate(loginSchema), async (req, res) => {
     if (!result.rows.length) return res.status(401).json({ error: 'Invalid credentials' });
 
     const user = result.rows[0];
+    if (user.is_deleted) return res.status(403).json({ error: 'This account has been deleted' });
     if (!user.is_verified) return res.status(403).json({ error: 'Please verify your email first' });
 
     const valid = await bcrypt.compare(password, user.password_hash);
@@ -606,6 +607,75 @@ router.get('/me', authMiddleware, async (req, res) => {
     res.json({ user: user.rows[0] });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// DELETE /api/auth/account
+router.delete('/account', authMiddleware, async (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ error: 'Password is required to delete your account' });
+  }
+
+  try {
+    const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    if (!userRes.rows.length) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const user = userRes.rows[0];
+
+    // 1. Verify password
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.status(400).json({ error: 'Incorrect password' });
+    }
+
+    // 2. Anonymize user record
+    const anonymizedEmail = `deleted_user_${user.id}_${Date.now()}@deleted.ulmgh.invalid`;
+    try {
+      await pool.query(
+        `UPDATE users
+         SET name = 'Deleted User',
+             email = $1,
+             phone = '',
+             password_hash = '',
+             avatar_url = NULL,
+             is_verified = FALSE,
+             is_deleted = TRUE,
+             deleted_at = NOW()
+         WHERE id = $2`,
+        [anonymizedEmail, req.user.id]
+      );
+    } catch (updateErr) {
+      if (updateErr.code === '42703') { // is_deleted / deleted_at columns not created yet before migration
+        await pool.query(
+          `UPDATE users
+           SET name = 'Deleted User',
+               email = $1,
+               phone = '',
+               password_hash = '',
+               avatar_url = NULL,
+               is_verified = FALSE
+           WHERE id = $2`,
+          [anonymizedEmail, req.user.id]
+        );
+      } else {
+        throw updateErr;
+      }
+    }
+
+    // 3. Delete saved addresses
+    await pool.query('DELETE FROM addresses WHERE user_id = $1', [req.user.id]);
+
+    // 4. Delete OTP records for this user's email
+    await pool.query('DELETE FROM otps WHERE email = $1', [user.email]);
+
+    // Note: Order records in 'orders' table are intentionally preserved for accounting/tax compliance.
+
+    res.json({ success: true, message: 'Account deleted successfully' });
+  } catch (err) {
+    console.error('Customer account deletion error:', err);
+    res.status(500).json({ error: 'Failed to delete account' });
   }
 });
 
