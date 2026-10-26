@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import api from '../utils/api';
+import { performGoogleLogin } from '../utils/socialAuth';
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL?.replace('/api', '') || 'http://localhost:5000';
 
@@ -140,9 +141,33 @@ export const useAuthStore = create((set, get) => ({
 
   isLoggedIn: () => !!get().token,
 
-  // Google OAuth - redirects to backend which handles Google flow
-  loginWithGoogle: () => {
-    window.location.href = `${BACKEND}/api/auth/google`;
+  // Native Google Login (Capacitor)
+  loginWithGoogle: async () => {
+    set({ loading: true, error: null });
+    try {
+      const idToken = await performGoogleLogin();
+      const { data } = await api.post('/auth/google', { idToken });
+      localStorage.setItem('token', data.token);
+      set({ token: data.token, user: data.user, loading: false });
+      return { success: true, role: data.user.role };
+    } catch (err) {
+      set({ loading: false });
+      const rawMsg = err?.message || err?.error || (typeof err === 'string' ? err : '');
+      let error = 'Google login failed. Please try again.';
+
+      if (/cancel|dismiss|abort|closed|user_cancel|cancelled|canceled|16/i.test(rawMsg)) {
+        error = 'Google login was cancelled.';
+      } else if (/network|offline|connect|internet|timeout|unavailable|econnrefused/i.test(rawMsg)) {
+        error = 'Network error. Please check your internet connection.';
+      } else if (err.response?.data?.error) {
+        error = err.response.data.error;
+      } else if (rawMsg && rawMsg !== '[object Object]') {
+        error = rawMsg;
+      }
+
+      set({ error });
+      return { success: false, error };
+    }
   },
 
   // Called on redirect back from Google with ?token=xxx in URL

@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowLeft, Mail, Lock, User, Phone, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '../store/useAuthStore';
 import logo from '../assets/logo.png';
 
@@ -34,6 +35,13 @@ export function SignupPage() {
     const res = await signup(form.name, form.email, form.phone, form.password);
     if (res.success) setStep('otp');
     else setLocalError(res.error);
+  };
+
+  const handleGoogleLogin = async () => {
+    setLocalError('');
+    const res = await loginWithGoogle();
+    if (res.success) navigate(res.role === 'admin' ? '/admin' : '/');
+    else if (res.error) setLocalError(res.error);
   };
 
   const handleOtpChange = (val, idx) => {
@@ -161,18 +169,24 @@ export function SignupPage() {
                 </button>
               </form>
 
-              {/* "Continue with Google" button temporarily hidden - can be restored later
-              <div className="flex items-center gap-3 mt-5 mb-4">
-                <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-[11px] text-gray-400 font-medium px-1">or continue with</span>
-                <div className="flex-1 h-px bg-gray-100" />
-              </div>
-              <button onClick={loginWithGoogle}
-                className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold py-3.5 rounded-2xl text-[15px] transition-all shadow-sm hover:shadow-md active:scale-[0.98] mb-5">
-                <GoogleIcon />
-                Continue with Google
-              </button>
-              */}
+              {Capacitor.isNativePlatform() && (
+                <>
+                  <div className="flex items-center gap-3 mt-5 mb-4">
+                    <div className="flex-1 h-px bg-gray-100" />
+                    <span className="text-[11px] text-gray-400 font-medium px-1">or continue with</span>
+                    <div className="flex-1 h-px bg-gray-100" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    disabled={loading}
+                    className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold py-3.5 rounded-2xl text-[15px] transition-all shadow-sm hover:shadow-md active:scale-[0.98] mb-5 disabled:opacity-60"
+                  >
+                    <GoogleIcon />
+                    Continue with Google
+                  </button>
+                </>
+              )}
 
               <div className="flex items-center gap-3 mt-5 mb-4">
                 <div className="flex-1 h-px bg-gray-100" />

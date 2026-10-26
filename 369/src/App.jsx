@@ -9,6 +9,7 @@ import { SplashScreen } from './components/SplashScreen';
 import { useStoreData } from './store/useStoreData';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { initializeSocialLogin } from './utils/socialAuth';
 
 import { HomePage } from './pages/HomePage';
 import { CategoryListingPage } from './pages/CategoryListingPage';
@@ -181,6 +182,7 @@ function App() {
       StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
       StatusBar.setBackgroundColor({ color: '#ff8500' }).catch(() => {});
       StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+      initializeSocialLogin().catch(() => {});
     }
   }, [fetchData]);
 
