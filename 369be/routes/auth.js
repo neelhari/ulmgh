@@ -8,6 +8,9 @@ const { verifyRazorpayPayment } = require('../utils/razorpay');
 const { generateOTP, createOTP, verifyOTP } = require('../utils/otp');
 const { authLimiter, loginLimiter } = require('../utils/rateLimiter');
 const { validate, signupSchema, loginSchema, addressSchema, orderSchema } = require('../utils/validation');
+const { OAuth2Client } = require('google-auth-library');
+
+const googleClient = new OAuth2Client();
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -376,6 +379,93 @@ router.post('/login', loginLimiter, validate(loginSchema), async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/auth/google
+router.post('/google', loginLimiter, async (req, res) => {
+  const { idToken } = req.body;
+  if (!idToken || typeof idToken !== 'string') {
+    return res.status(400).json({ error: 'idToken is required' });
+  }
+
+  const clientId = process.env.GOOGLE_WEB_CLIENT_ID;
+  if (!clientId) {
+    console.error('GOOGLE_WEB_CLIENT_ID is not configured');
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: clientId,
+    });
+    payload = ticket.getPayload();
+  } catch (err) {
+    console.error('Google token verification failed:', err.message || err);
+    return res.status(401).json({ error: 'Invalid Google token' });
+  }
+
+  if (!payload || !payload.email_verified) {
+    return res.status(400).json({ error: 'Google email is not verified' });
+  }
+
+  const googleId = payload.sub;
+  const email = payload.email?.toLowerCase()?.trim();
+  if (!googleId || !email) {
+    return res.status(400).json({ error: 'Invalid Google profile payload' });
+  }
+  const name = payload.name || email.split('@')[0] || 'User';
+  const avatarUrl = payload.picture || null;
+
+  try {
+    let user = null;
+
+    // 1. Find by google_id
+    const byGoogle = await pool.query('SELECT * FROM users WHERE google_id = $1', [googleId]);
+    if (byGoogle.rows.length) {
+      user = byGoogle.rows[0];
+    } else {
+      // 2. Find by email (link the account)
+      const byEmail = await pool.query('SELECT * FROM users WHERE LOWER(email) = $1', [email]);
+      if (byEmail.rows.length) {
+        user = byEmail.rows[0];
+        const updateRes = await pool.query(
+          'UPDATE users SET google_id = $1, is_verified = TRUE WHERE id = $2 RETURNING *',
+          [googleId, user.id]
+        );
+        user = updateRes.rows[0];
+      } else {
+        // 3. Create a verified customer
+        const insertRes = await pool.query(
+          `INSERT INTO users (name, email, google_id, is_verified, role, avatar_url)
+           VALUES ($1, $2, $3, TRUE, 'user', $4)
+           RETURNING *`,
+          [name, email, googleId, avatarUrl]
+        );
+        user = insertRes.rows[0];
+      }
+    }
+
+    if (user.is_deleted) {
+      return res.status(403).json({ error: 'This account has been deleted' });
+    }
+
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || null,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error('Google auth database error:', err);
+    return res.status(500).json({ error: 'Server error during Google authentication' });
   }
 });
 
