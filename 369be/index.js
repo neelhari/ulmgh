@@ -17,23 +17,26 @@ app.use(helmet({
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow all vercel.app subdomains, localhost, capacitor, and any custom domain set via env
+    // Allow all vercel.app subdomains, ulmgh-369.com domains, localhost, capacitor, and any custom domain set via env
     const allowed = [
       'http://localhost:5173',
       'http://localhost:3000',
       'https://localhost',
       'capacitor://localhost',
       'https://369-bay.vercel.app',
+      'https://ulmgh-369.com',
+      'https://www.ulmgh-369.com',
       process.env.FRONTEND_URL,
     ].filter(Boolean);
 
     // DEV ONLY - REMOVE BEFORE LAUNCH: allow local WiFi addresses (192.168.x.x:5173)
     const isDevLocalWifi = /^http:\/\/192\.168\.\d+\.\d+:5173$/.test(origin);
+    const isUlmghDomain = /^(https?:\/\/)?([a-z0-9-]+\.)*ulmgh-369\.com(:\d+)?$/i.test(origin);
 
-    if (!origin || allowed.includes(origin) || /\.vercel\.app$/.test(origin) || isDevLocalWifi) {
-      callback(null, origin || '*');
+    if (!origin || allowed.includes(origin) || /\.vercel\.app$/.test(origin) || isUlmghDomain || isDevLocalWifi) {
+      callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(null, false);
     }
   },
   credentials: true
