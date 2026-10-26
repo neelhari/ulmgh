@@ -10,6 +10,7 @@ import { useStoreData } from './store/useStoreData';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { initializeSocialLogin } from './utils/socialAuth';
+import { initPushNotifications } from './utils/pushNotifications';
 
 import { HomePage } from './pages/HomePage';
 import { CategoryListingPage } from './pages/CategoryListingPage';
@@ -183,6 +184,7 @@ function App() {
       StatusBar.setBackgroundColor({ color: '#ff8500' }).catch(() => {});
       StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
       initializeSocialLogin().catch(() => {});
+      initPushNotifications().catch(() => {});
     }
   }, [fetchData]);
 
@@ -275,6 +277,7 @@ function App() {
                       <Route path="profile" element={<VendorProfilePage />} />
                       <Route path="support" element={<VendorSupportPage />} />
                       <Route path="offers" element={<VendorOffersPage />} />
+                      <Route path="guidelines" element={<VendorGuidelinesPage />} />
                     </Routes>
                   </VendorLayout>
                 } />

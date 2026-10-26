@@ -36,7 +36,7 @@ function Field({ label, required, children, hint }) {
 function Input({ className = '', ...props }) {
   return (
     <input
-      className={`w-full px-4 py-3 border border-gray-200 rounded-[12px] text-sm text-gray-900 bg-gray-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603] transition-all shadow-inner ${className}`}
+      className={`w-full px-3.5 sm:px-4 py-2.5 sm:py-3 border border-gray-200 rounded-[12px] text-sm text-gray-900 bg-gray-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603] transition-all shadow-inner ${className}`}
       {...props}
     />
   );
@@ -45,7 +45,7 @@ function Input({ className = '', ...props }) {
 function Textarea({ className = '', ...props }) {
   return (
     <textarea
-      className={`w-full px-4 py-3 border border-gray-200 rounded-[12px] text-sm text-gray-900 bg-gray-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603] transition-all shadow-inner resize-none ${className}`}
+      className={`w-full px-3.5 sm:px-4 py-2.5 sm:py-3 border border-gray-200 rounded-[12px] text-sm text-gray-900 bg-gray-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603] transition-all shadow-inner resize-none ${className}`}
       {...props}
     />
   );
@@ -54,7 +54,7 @@ function Textarea({ className = '', ...props }) {
 function Select({ className = '', children, ...props }) {
   return (
     <select
-      className={`w-full px-4 py-3 border border-gray-200 rounded-[12px] text-sm text-gray-900 bg-gray-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603] transition-all shadow-inner ${className}`}
+      className={`w-full px-3.5 sm:px-4 py-2.5 sm:py-3 border border-gray-200 rounded-[12px] text-sm text-gray-900 bg-gray-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603] transition-all shadow-inner ${className}`}
       {...props}
     >
       {children}
@@ -64,9 +64,9 @@ function Select({ className = '', children, ...props }) {
 
 function Section({ title, children }) {
   return (
-    <div className="bg-white rounded-[24px] border border-gray-100 p-6 sm:p-8 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all duration-300">
-      {title && <h3 className="text-base font-extrabold text-gray-900 mb-6 pb-4 border-b border-gray-100/80 tracking-tight">{title}</h3>}
-      <div className="space-y-5">{children}</div>
+    <div className="bg-white rounded-2xl sm:rounded-[24px] border border-gray-100 p-4 sm:p-8 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all duration-300">
+      {title && <h3 className="text-sm sm:text-base font-extrabold text-gray-900 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-gray-100/80 tracking-tight">{title}</h3>}
+      <div className="space-y-4 sm:space-y-5">{children}</div>
     </div>
   );
 }
@@ -364,10 +364,10 @@ export function VendorProductFormPage() {
   };
 
   const UploadBtn = ({ field, label, accept = 'image/*', onUpload, loading }) => (
-    <label className="relative inline-flex items-center gap-2 cursor-pointer px-4 py-2 bg-gray-50 border border-dashed border-gray-300 rounded-xl text-sm text-gray-600 hover:bg-orange-50 hover:border-[#fe6603] transition-colors">
+    <label className="relative inline-flex items-center justify-center gap-2 cursor-pointer px-4 py-2.5 min-h-[44px] bg-gray-50 border border-dashed border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-orange-50 hover:border-[#fe6603] active:bg-orange-100 transition-colors">
       <input type="file" accept={accept} onChange={onUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-      <Upload className="w-4 h-4" />
-      {loading ? 'Uploading...' : label}
+      <Upload className="w-4 h-4 flex-shrink-0" />
+      <span>{loading ? 'Uploading...' : label}</span>
     </label>
   );
 
@@ -436,16 +436,16 @@ export function VendorProductFormPage() {
         return (
           <div className="space-y-5">
             <Section title="Main Product Image">
-              <div className="flex items-start gap-4">
-                <div className="w-28 h-28 rounded-2xl border-2 border-dashed border-gray-200 overflow-hidden flex items-center justify-center bg-gray-50 flex-shrink-0">
+              <div className="flex flex-col sm:flex-row items-start gap-4">
+                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl border-2 border-dashed border-gray-200 overflow-hidden flex items-center justify-center bg-gray-50 flex-shrink-0">
                   {form.image_url
                     ? <img src={form.image_url} alt="Main" className="w-full h-full object-cover" />
                     : <Package className="w-8 h-8 text-gray-300" />}
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 w-full sm:w-auto">
                   <UploadBtn label="Upload Main Image" onUpload={handleMainImageUpload} loading={uploadingField === 'main'} />
                   {form.image_url && (
-                    <button onClick={() => set('image_url', '')} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700">
+                    <button onClick={() => set('image_url', '')} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 min-h-[32px]">
                       <X className="w-3 h-3" /> Remove
                     </button>
                   )}
@@ -761,27 +761,37 @@ export function VendorProductFormPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top Bar */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
+      <div className="sticky top-14 md:top-0 z-30 md:z-40 bg-white/95 backdrop-blur-md md:bg-white border-b border-gray-100 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <button onClick={() => navigate('/vendor/products')}
-              className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-colors flex-shrink-0">
+            <button
+              onClick={() => navigate('/vendor/products')}
+              className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-colors flex-shrink-0 min-h-[40px] min-w-[40px] flex items-center justify-center"
+              aria-label="Back to products"
+            >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="min-w-0">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-0.5">Vendor Portal</p>
-              <h1 className="text-xl font-extrabold text-gray-900 truncate tracking-tight">
+              <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider mb-0.5">Vendor Portal</p>
+              <h1 className="text-lg sm:text-xl font-extrabold text-gray-900 truncate tracking-tight">
                 {isEdit ? 'Edit Product' : 'Add New Product'}
               </h1>
             </div>
           </div>
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <button onClick={() => handleSave('draft')} disabled={!!saving}
-              className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-gray-50 border border-gray-200 text-gray-700 rounded-[12px] text-sm font-bold hover:bg-gray-100 transition-all disabled:opacity-50">
+          {/* Desktop action buttons */}
+          <div className="hidden md:flex items-center gap-3 flex-shrink-0">
+            <button
+              onClick={() => handleSave('draft')}
+              disabled={!!saving}
+              className="flex items-center gap-2 px-5 py-2.5 bg-gray-50 border border-gray-200 text-gray-700 rounded-[12px] text-sm font-bold hover:bg-gray-100 transition-all disabled:opacity-50 min-h-[42px]"
+            >
               <Save className="w-4 h-4" /> Save Draft
             </button>
-            <button onClick={() => handleSave('publish')} disabled={!!saving}
-              className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#fe6603] to-[#ff7b23] text-white rounded-[12px] text-sm font-bold hover:shadow-[0_8px_20px_rgba(254,102,3,0.3)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:transform-none disabled:hover:shadow-none">
+            <button
+              onClick={() => handleSave('publish')}
+              disabled={!!saving}
+              className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#fe6603] to-[#ff7b23] text-white rounded-[12px] text-sm font-bold hover:shadow-[0_8px_20px_rgba(254,102,3,0.3)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:transform-none disabled:hover:shadow-none min-h-[42px]"
+            >
               <Send className="w-4 h-4" />
               {saving === 'publish' ? 'Submitting...' : 'Submit for Approval'}
             </button>
@@ -789,16 +799,19 @@ export function VendorProductFormPage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-        <div className="flex gap-6">
-          {/* Sidebar Tabs */}
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 md:py-6 pb-28 md:pb-8">
+        <div className="flex flex-col md:flex-row gap-5 md:gap-6">
+          {/* Desktop Sidebar Tabs */}
           <aside className="hidden md:block w-52 flex-shrink-0">
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-2 sticky top-20">
               {TABS.map(tab => {
                 const Icon = tab.icon;
                 return (
-                  <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left ${activeTab === tab.id ? 'bg-[#fe6603]/10 text-[#fe6603] font-semibold' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}>
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left ${activeTab === tab.id ? 'bg-[#fe6603]/10 text-[#fe6603] font-semibold' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}
+                  >
                     <Icon className="w-4 h-4 flex-shrink-0" />
                     {tab.label}
                     {activeTab === tab.id && <ChevronRight className="w-3.5 h-3.5 ml-auto" />}
@@ -806,36 +819,72 @@ export function VendorProductFormPage() {
                 );
               })}
 
-              {/* Mobile save draft */}
+              {/* Desktop save draft shortcut */}
               <div className="mt-3 pt-3 border-t border-gray-100">
-                <button onClick={() => handleSave('draft')} disabled={!!saving}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-100 transition-colors disabled:opacity-50">
+                <button
+                  onClick={() => handleSave('draft')}
+                  disabled={!!saving}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-100 transition-colors disabled:opacity-50"
+                >
                   <Save className="w-3.5 h-3.5" /> Save Draft
                 </button>
               </div>
             </div>
           </aside>
 
-          {/* Mobile Tabs */}
-          <div className="md:hidden w-full mb-4">
-            <div className="flex gap-2 overflow-x-auto pb-1">
+          {/* Mobile Tabs — Stacked vertically above the form, horizontally scrollable */}
+          <div className="md:hidden w-full">
+            <div className="flex gap-2 overflow-x-auto pb-2 pt-0.5 hide-scrollbar -mx-1 px-1">
               {TABS.map(tab => {
                 const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
                 return (
-                  <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${activeTab === tab.id ? 'bg-[#fe6603] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>
-                    <Icon className="w-3.5 h-3.5" />
-                    {tab.label}
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3.5 py-2.5 min-h-[44px] rounded-xl text-xs font-bold transition-all shadow-sm ${
+                      isActive
+                        ? 'bg-gradient-to-r from-[#fe6603] to-[#ff7b23] text-white shadow-[#fe6603]/25'
+                        : 'bg-white text-gray-600 border border-gray-200/90 active:bg-gray-100'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span className="whitespace-nowrap">{tab.label}</span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Main Content */}
+          {/* Main Content — Full width below tabs on mobile */}
           <main className="flex-1 min-w-0">
             {renderTabContent()}
           </main>
+        </div>
+      </div>
+
+      {/* Mobile Sticky Bottom Action Bar */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200/80 p-3 pb-safe shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+        <div className="flex items-center gap-2.5 max-w-lg mx-auto">
+          <button
+            type="button"
+            onClick={() => handleSave('draft')}
+            disabled={!!saving}
+            className="flex-1 flex items-center justify-center gap-1.5 py-3 px-3 bg-gray-50 active:bg-gray-100 border border-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all disabled:opacity-50 min-h-[44px]"
+          >
+            <Save className="w-4 h-4 flex-shrink-0" />
+            <span>Save Draft</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSave('publish')}
+            disabled={!!saving}
+            className="flex-[1.5] flex items-center justify-center gap-1.5 py-3 px-4 bg-gradient-to-r from-[#fe6603] to-[#ff7b23] active:from-[#e55c02] active:to-[#fe6603] text-white rounded-xl text-xs font-bold shadow-md shadow-orange-500/20 transition-all disabled:opacity-50 min-h-[44px]"
+          >
+            <Send className="w-4 h-4 flex-shrink-0" />
+            <span>{saving === 'publish' ? 'Submitting...' : 'Submit for Approval'}</span>
+          </button>
         </div>
       </div>
     </div>
