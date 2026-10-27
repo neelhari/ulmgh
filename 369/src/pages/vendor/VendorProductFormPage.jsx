@@ -799,7 +799,7 @@ export function VendorProductFormPage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 md:py-6 pb-28 md:pb-8">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 md:py-6 pb-48 md:pb-8">
         <div className="flex flex-col md:flex-row gap-5 md:gap-6">
           {/* Desktop Sidebar Tabs */}
           <aside className="hidden md:block w-52 flex-shrink-0">
@@ -864,26 +864,31 @@ export function VendorProductFormPage() {
         </div>
       </div>
 
-      {/* Mobile Sticky Bottom Action Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200/80 p-3 pb-safe shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-        <div className="flex items-center gap-2.5 max-w-lg mx-auto">
+      {/* Mobile Sticky Bottom Action Bar — Elevated precisely above VendorLayout's fixed bottom navigation */}
+      <div
+        className="md:hidden fixed left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200/90 p-2.5 sm:p-3 shadow-[0_-6px_25px_rgba(0,0,0,0.08)]"
+        style={{
+          bottom: 'calc(4rem + max(16px, env(safe-area-inset-bottom, 16px)))',
+        }}
+      >
+        <div className="flex items-center gap-2 max-w-lg mx-auto">
           <button
             type="button"
             onClick={() => handleSave('draft')}
             disabled={!!saving}
-            className="flex-1 flex items-center justify-center gap-1.5 py-3 px-3 bg-gray-50 active:bg-gray-100 border border-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all disabled:opacity-50 min-h-[44px]"
+            className="flex-1 flex items-center justify-center gap-1.5 py-3 px-3 bg-white active:bg-gray-100 border-2 border-gray-300 text-gray-800 rounded-xl text-xs font-bold transition-all disabled:opacity-50 min-h-[44px] shadow-xs hover:border-[#fe6603]/40"
           >
-            <Save className="w-4 h-4 flex-shrink-0" />
-            <span>Save Draft</span>
+            <Save className="w-4 h-4 text-gray-600 flex-shrink-0" />
+            <span className="truncate">Save Draft</span>
           </button>
           <button
             type="button"
             onClick={() => handleSave('publish')}
             disabled={!!saving}
-            className="flex-[1.5] flex items-center justify-center gap-1.5 py-3 px-4 bg-gradient-to-r from-[#fe6603] to-[#ff7b23] active:from-[#e55c02] active:to-[#fe6603] text-white rounded-xl text-xs font-bold shadow-md shadow-orange-500/20 transition-all disabled:opacity-50 min-h-[44px]"
+            className="flex-[1.4] flex items-center justify-center gap-1.5 py-3 px-3.5 bg-gradient-to-r from-[#fe6603] to-[#ff7b23] active:from-[#e55c02] active:to-[#fe6603] text-white rounded-xl text-xs font-bold shadow-md shadow-orange-500/20 transition-all disabled:opacity-50 min-h-[44px]"
           >
             <Send className="w-4 h-4 flex-shrink-0" />
-            <span>{saving === 'publish' ? 'Submitting...' : 'Submit for Approval'}</span>
+            <span className="truncate">{saving === 'publish' ? 'Submitting...' : 'Submit for Approval'}</span>
           </button>
         </div>
       </div>
