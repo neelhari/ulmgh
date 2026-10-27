@@ -3,7 +3,7 @@ const pool = require('../db');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const { calculateOrder, DELIVERY_CHARGE } = require('../utils/pricing');
+const { calculateOrder, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD, getDeliveryCharge } = require('../utils/pricing');
 const { verifyRazorpayPayment } = require('../utils/razorpay');
 const { validate, orderSchema } = require('../utils/validation');
 
@@ -178,6 +178,15 @@ router.get('/db-test', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// GET /api/general/delivery-rules
+router.get('/delivery-rules', (req, res) => {
+  res.json({
+    delivery_charge: DELIVERY_CHARGE,
+    free_delivery_threshold: FREE_DELIVERY_THRESHOLD,
+    is_free: DELIVERY_CHARGE <= 0
+  });
 });
 
 // GET /api/general/categories

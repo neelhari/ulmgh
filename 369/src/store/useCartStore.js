@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useToastStore } from './useToastStore';
+import { calculateDeliveryCharge, DEFAULT_DELIVERY_CHARGE } from '../config/delivery';
 
 export const useCartStore = create(
   persist(
     (set, get) => ({
       items: [],
-      deliveryCharge: 1,
+      deliveryCharge: DEFAULT_DELIVERY_CHARGE,
       
       addToCart: (product, variant, qty = 1) => {
         set((state) => {
@@ -65,9 +66,14 @@ export const useCartStore = create(
         }, 0);
       },
 
+      getDeliveryFee: () => {
+        const subtotal = get().getSubtotal();
+        return calculateDeliveryCharge(subtotal);
+      },
+
       getTotal: () => {
         const subtotal = get().getSubtotal();
-        return subtotal > 0 ? subtotal + get().deliveryCharge : 0;
+        return subtotal > 0 ? subtotal + calculateDeliveryCharge(subtotal) : 0;
       }
     }),
     {
@@ -75,7 +81,7 @@ export const useCartStore = create(
       merge: (persistedState, currentState) => ({
         ...currentState,
         ...persistedState,
-        deliveryCharge: 1
+        deliveryCharge: DEFAULT_DELIVERY_CHARGE
       })
     }
   )

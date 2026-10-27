@@ -33,7 +33,7 @@ function CartItemImage({ item }) {
 
 export function CartPage() {
   const navigate = useNavigate();
-  const { items, removeFromCart, updateQuantity, getSubtotal, getTotal, deliveryCharge } = useCartStore();
+  const { items, removeFromCart, updateQuantity, getSubtotal, getTotal, getDeliveryFee } = useCartStore();
   const { offers } = useStoreData();
   const [couponCode, setCouponCode] = useState('');
   const [coupon, setCoupon] = useState(null);
@@ -94,7 +94,8 @@ export function CartPage() {
     return Math.min(val, applicableSubtotal);
   })();
 
-  const grandTotal = Math.max(0, subtotal - discount) + (subtotal > 0 ? deliveryCharge : 0);
+  const delivery = getDeliveryFee ? getDeliveryFee() : 0;
+  const grandTotal = Math.max(0, subtotal - discount) + delivery;
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
@@ -159,7 +160,6 @@ export function CartPage() {
   const totalOriginalPrice = cartItemsWithDiscount.reduce((acc, curr) => acc + curr.originalPrice * curr.qty, 0);
   const totalItemPrice = cartItemsWithDiscount.reduce((acc, curr) => acc + curr.itemPrice * curr.qty, 0);
   const totalMockupDiscount = totalOriginalPrice - totalItemPrice;
-  const delivery = totalItemPrice > 0 ? deliveryCharge : 0;
   const finalAmount = totalItemPrice + delivery - discount;
 
   return (

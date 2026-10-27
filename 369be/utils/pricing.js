@@ -1,7 +1,15 @@
 const pool = require('../db');
 
-// Rs 1 delivery charge constant
-const DELIVERY_CHARGE = 1;
+// Configurable delivery charge rule (set via env, defaults to 0 / free delivery above threshold)
+const DELIVERY_CHARGE = Number(process.env.DELIVERY_CHARGE || 0);
+const FREE_DELIVERY_THRESHOLD = Number(process.env.FREE_DELIVERY_THRESHOLD || 500);
+
+function getDeliveryCharge(subtotal) {
+  if (subtotal <= 0) return 0;
+  if (DELIVERY_CHARGE <= 0) return 0;
+  if (FREE_DELIVERY_THRESHOLD > 0 && subtotal >= FREE_DELIVERY_THRESHOLD) return 0;
+  return DELIVERY_CHARGE;
+}
 
 /**
  * Calculates order pricing directly from DB products and coupons.
@@ -160,7 +168,7 @@ async function calculateOrder(items, couponCode = '', dbClient = pool) {
   }
 
   // 3. Delivery charge and final total
-  const deliveryCharge = subtotal > 0 ? DELIVERY_CHARGE : 0;
+  const deliveryCharge = getDeliveryCharge(subtotal);
   const total = Math.max(0, subtotal - discount) + deliveryCharge;
 
   return {
@@ -174,5 +182,7 @@ async function calculateOrder(items, couponCode = '', dbClient = pool) {
 
 module.exports = {
   DELIVERY_CHARGE,
+  FREE_DELIVERY_THRESHOLD,
+  getDeliveryCharge,
   calculateOrder
 };
