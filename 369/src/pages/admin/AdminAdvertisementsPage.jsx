@@ -108,6 +108,7 @@ export function AdminAdvertisementsPage() {
     try {
       const res = await fetch(`${BACKEND_URL}/admin/upload`, {
         method: 'POST',
+        headers,
         body: fd
       });
       const data = await res.json();
