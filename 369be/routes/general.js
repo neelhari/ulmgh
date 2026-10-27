@@ -495,6 +495,45 @@ router.post('/razorpay/webhook', async (req, res) => {
             await pool.query(`UPDATE orders SET status = 'paid' WHERE id = $1`, [order.id]);
           }
         }
+      } else {
+        // Orphan payment: payment captured in Razorpay but no order row found in DB
+        const amountPaise = payment.amount || 0;
+        console.warn(`[ORPHAN PAYMENT] Captured payment ${paymentId} (Order: ${orderId || 'N/A'}) of ₹${(amountPaise / 100).toFixed(2)} has no matching order record!`);
+        
+        try {
+          const amountRupees = (amountPaise / 100).toFixed(2);
+          const adminEmail = process.env.EMAIL_USER;
+          if (adminEmail) {
+            await transporter.sendMail({
+              from: `"ULMGH369 Alerts" <${process.env.EMAIL_USER}>`,
+              to: adminEmail,
+              subject: `⚠️ URGENT: Orphan Razorpay Payment Detected (${paymentId})`,
+              html: `
+                <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;border:1px solid #fee2e2;border-radius:12px;overflow:hidden;">
+                  <div style="background:#dc2626;padding:20px;text-align:center;">
+                    <h2 style="color:#fff;margin:0;font-size:20px;">⚠️ Orphan Payment Alert</h2>
+                    <p style="color:#fecaca;margin:6px 0 0;font-size:13px;">Payment was captured in Razorpay but has NO matching order in the database.</p>
+                  </div>
+                  <div style="padding:24px;color:#1f2937;font-size:14px;line-height:1.6;">
+                    <p>A customer completed payment on Razorpay, but no matching order exists in your database. This happens if the customer closed the app before the order could be created or if stock ran out.</p>
+                    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0;">
+                      <p style="margin:4px 0;"><strong>Payment ID:</strong> ${paymentId}</p>
+                      <p style="margin:4px 0;"><strong>Razorpay Order ID:</strong> ${orderId || 'N/A'}</p>
+                      <p style="margin:4px 0;"><strong>Amount Captured:</strong> ₹${amountRupees}</p>
+                      <p style="margin:4px 0;"><strong>Customer Email:</strong> ${payment.email || 'Not provided'}</p>
+                      <p style="margin:4px 0;"><strong>Customer Contact:</strong> ${payment.contact || 'Not provided'}</p>
+                      <p style="margin:4px 0;"><strong>Time:</strong> ${new Date().toISOString()}</p>
+                    </div>
+                    <p style="color:#dc2626;font-weight:600;">Action Required: Check your Razorpay Dashboard for payment <code>${paymentId}</code> and either manually fulfill the order or issue a refund to the customer.</p>
+                  </div>
+                </div>
+              `
+            });
+            console.log(`✅ Orphan payment alert email sent to admin for ${paymentId}`);
+          }
+        } catch (mailErr) {
+          console.error('Failed to send orphan payment alert email:', mailErr);
+        }
       }
     }
 
