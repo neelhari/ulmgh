@@ -26,8 +26,7 @@ const bcrypt = require('bcryptjs');
 const dotenv = require('dotenv');
 
 const BASE_URL = 'https://ulmgh.vercel.app/api';
-const ADMIN_EMAIL = 'lakshmi.umamaheswar@gmail.com';
-const OLD_ADMIN_PASS = 'Admin@1234';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'lakshmi.umamaheswar@gmail.com';
 
 // Locate database connection string (.env.newdb preferred, then .env)
 function getDbConnectionString() {
