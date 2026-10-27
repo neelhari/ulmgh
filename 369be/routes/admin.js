@@ -63,15 +63,56 @@ router.get('/orders', authMiddleware, adminOnly, async (req, res) => {
 
 // PUT /api/admin/orders/:id/status
 router.put('/orders/:id/status', authMiddleware, adminOnly, async (req, res) => {
-  const { status, gender } = req.body;
+  const { status } = req.body;
+  const orderId = req.params.id;
+
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      'UPDATE orders SET status=$1 WHERE id=$2 RETURNING *',
-      [status, req.params.id]
+    await client.query('BEGIN');
+
+    // Lock the order row to prevent concurrent race conditions
+    const orderRes = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [orderId]);
+    const order = orderRes.rows[0];
+
+    if (!order) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Only restore stock if transitioning to 'cancelled' and was not already cancelled
+    if (status === 'cancelled' && order.status !== 'cancelled') {
+      let items = [];
+      try {
+        items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+      } catch (parseErr) {
+        items = [];
+      }
+
+      for (const item of items) {
+        const prodId = item.product?.id || item.id;
+        const qty = Math.max(1, parseInt(item.qty || item.quantity || 1, 10));
+        if (prodId) {
+          await client.query(
+            'UPDATE products SET stock = stock + $1 WHERE id = $2',
+            [qty, prodId]
+          );
+        }
+      }
+    }
+
+    const updateRes = await client.query(
+      'UPDATE orders SET status = $1 WHERE id = $2 RETURNING *',
+      [status, orderId]
     );
-    res.json({ order: result.rows[0] });
+
+    await client.query('COMMIT');
+    res.json({ order: updateRes.rows[0] });
   } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error updating order status:', err);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
