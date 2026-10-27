@@ -138,9 +138,25 @@ router.post('/orders/:id/ship', authMiddleware, adminOnly, async (req, res) => {
       selling_price: item.variant?.price || item.product?.price || 0,
     }));
 
+    // Read package weight from products if present, else fallback to 0.5 kg
+    let totalWeight = 0;
+    for (const item of items) {
+      const w = parseFloat(item.product?.weight || item.product?.custom_attributes?.weight || item.weight || 0);
+      const qty = item.qty || 1;
+      if (w > 0) {
+        totalWeight += w * qty;
+      }
+    }
+    // Convert grams to kg if value > 50
+    if (totalWeight > 50) {
+      totalWeight = totalWeight / 1000;
+    }
+    const packageWeight = totalWeight > 0 ? parseFloat(totalWeight.toFixed(2)) : 0.5;
+
     const shiprocketPayload = {
       order_id: order.order_number || order.id.toString(),
       order_date: new Date(order.created_at).toISOString().split('T')[0],
+      pickup_location: process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary',
       billing_customer_name: address.name || 'Customer',
       billing_last_name: '',
       billing_address: address.line1 || 'No Address',
@@ -157,7 +173,7 @@ router.post('/orders/:id/ship', authMiddleware, adminOnly, async (req, res) => {
       length: 10,
       breadth: 10,
       height: 10,
-      weight: 0.5
+      weight: packageWeight
     };
 
     // 1. Create Custom Order in Shiprocket

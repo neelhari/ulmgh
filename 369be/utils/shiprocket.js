@@ -23,19 +23,25 @@ async function authenticate() {
     
     return cachedToken;
   } catch (error) {
-    console.warn('Shiprocket Auth failed (403). Using MOCK MODE for development.', error.response?.data?.message);
-    return "mock_token";
+    const errMsg = error.response?.data?.message || error.message || 'Invalid credentials or network failure';
+    console.error('Shiprocket login failed:', errMsg);
+    throw new Error(`Shiprocket login failed: ${errMsg}`);
   }
 }
 
 async function createCustomOrder(orderData) {
   const token = await authenticate();
-  if (token === "mock_token") {
-    return { shipment_id: "mock_ship_" + Date.now(), order_id: "mock_sr_order_" + Date.now() };
+
+  const payload = {
+    pickup_location: process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary',
+    ...orderData,
+  };
+  if (!payload.pickup_location && process.env.SHIPROCKET_PICKUP_LOCATION) {
+    payload.pickup_location = process.env.SHIPROCKET_PICKUP_LOCATION;
   }
 
   try {
-    const response = await axios.post(`${BASE_URL}/orders/create/adhoc`, orderData, {
+    const response = await axios.post(`${BASE_URL}/orders/create/adhoc`, payload, {
       headers: { Authorization: `Bearer ${token}` }
     });
     return response.data;
@@ -47,9 +53,6 @@ async function createCustomOrder(orderData) {
 
 async function assignAWB(shipmentId) {
   const token = await authenticate();
-  if (token === "mock_token") {
-    return { response: { data: { awb_code: "MOCKAWB" + Date.now(), track_url: "https://mock.shiprocket.co/tracking/MOCKAWB" } } };
-  }
 
   try {
     const response = await axios.post(`${BASE_URL}/courier/assign/awb`, {
@@ -66,7 +69,6 @@ async function assignAWB(shipmentId) {
 
 async function requestPickup(shipmentId) {
   const token = await authenticate();
-  if (token === "mock_token") return { pickup_scheduled: true };
 
   try {
     const response = await axios.post(`${BASE_URL}/courier/generate/pickup`, {
@@ -83,7 +85,6 @@ async function requestPickup(shipmentId) {
 
 async function generateLabel(shipmentId) {
   const token = await authenticate();
-  if (token === "mock_token") return { label_created: 1, label_url: "https://mock.shiprocket.co/label.pdf" };
 
   try {
     const response = await axios.post(`${BASE_URL}/courier/generate/label`, {
