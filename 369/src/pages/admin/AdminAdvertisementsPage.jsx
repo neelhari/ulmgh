@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Megaphone, Target, Search, X, Image as ImageIcon, Video, CheckCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { compressImage } from '../../utils/imageCompressor';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
 
@@ -103,9 +104,10 @@ export function AdminAdvertisementsPage() {
     if (!file) return;
     
     setUploading(true);
-    const fd = new FormData();
-    fd.append('image', file);
     try {
+      const fileToUpload = await compressImage(file, { maxDimension: 1920 });
+      const fd = new FormData();
+      fd.append('image', fileToUpload);
       const res = await fetch(`${BACKEND_URL}/admin/upload`, {
         method: 'POST',
         headers,

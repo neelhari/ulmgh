@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ImageIcon, Plus, Trash2, Edit2, X, Save, Upload } from "lucide-react";
 import { motion } from "framer-motion";
+import { compressImage } from "../../utils/imageCompressor";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
 
@@ -79,8 +80,9 @@ export function AdminBannersPage() {
     setUploading(true);
     try {
       const token = localStorage.getItem("token");
+      const fileToUpload = await compressImage(file, { maxDimension: 1920 });
       const uploadData = new FormData();
-      uploadData.append("image", file);
+      uploadData.append("image", fileToUpload);
 
       const res = await fetch(`${BACKEND_URL}/admin/upload`, {
         method: "POST",

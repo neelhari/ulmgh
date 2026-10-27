@@ -6,6 +6,7 @@ import {
   Star, TrendingUp, Tag, CheckCircle
 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { compressImage } from '../../utils/imageCompressor';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000/api';
 
@@ -173,12 +174,14 @@ export function AdminProductFormPage() {
   }));
 
   const uploadFile = async (file) => {
+    const fileToUpload = await compressImage(file);
     const fd = new FormData();
-    fd.append('image', file);
+    fd.append('image', fileToUpload);
     const res = await fetch(`${BACKEND_URL}/admin/upload`, {
       method: 'POST', headers, body: fd
     });
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
     return data.url;
   };
 
