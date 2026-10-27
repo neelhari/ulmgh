@@ -23,17 +23,14 @@ app.use(cors({
       'http://localhost:3000',
       'https://localhost',
       'capacitor://localhost',
-      'https://369-bay.vercel.app',
       'https://ulmgh-369.com',
       'https://www.ulmgh-369.com',
       process.env.FRONTEND_URL,
     ].filter(Boolean);
 
-    // DEV ONLY - REMOVE BEFORE LAUNCH: allow local WiFi addresses (192.168.x.x:5173)
-    const isDevLocalWifi = /^http:\/\/192\.168\.\d+\.\d+:5173$/.test(origin);
     const isUlmghDomain = /^(https?:\/\/)?([a-z0-9-]+\.)*ulmgh-369\.com(:\d+)?$/i.test(origin);
 
-    if (!origin || allowed.includes(origin) || /\.vercel\.app$/.test(origin) || isUlmghDomain || isDevLocalWifi) {
+    if (!origin || allowed.includes(origin) || /\.vercel\.app$/.test(origin) || isUlmghDomain) {
       callback(null, true);
     } else {
       callback(null, false);
