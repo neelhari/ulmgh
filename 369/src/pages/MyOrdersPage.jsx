@@ -297,9 +297,10 @@ export function MyOrdersPage() {
                               📦 Package {idx + 1} {ful.vendor_name ? `(${ful.vendor_name})` : ''}
                             </span>
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${
-                              ful.status === 'shipped' || ful.status === 'delivered' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                              ful.status === 'shipped' || ful.status === 'delivered' ? 'bg-green-100 text-green-700' :
+                              ful.status === 'ready_to_ship' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
                             }`}>
-                              {ful.status || 'Processing'}
+                              {ful.status === 'ready_to_ship' ? 'Pickup Scheduled' : (ful.status || 'Processing')}
                             </span>
                           </div>
                           {ful.awb_code ? (

@@ -349,34 +349,105 @@ async function shipFulfillment(fulfillmentId, options = {}) {
       if (!awbCode) {
         throw new Error(awbRes.response?.data?.message || 'Shiprocket did not return an AWB code');
       }
+
+      await dbClient.query(
+        'UPDATE order_fulfillments SET awb_code = $1, courier_name = $2, courier_company_id = $3 WHERE id = $4',
+        [awbCode, courierName, courierCompanyId, f.id]
+      );
     }
 
     const trackingUrl = `https://shiprocket.co/tracking/${awbCode}`;
 
-    // 7. STEP 3: Persist successful shipping details
+    // 7. STEP 3: Generate Shipping Label (if available)
+    let labelUrl = f.label_url;
+    if (!labelUrl && client.generateLabel) {
+      try {
+        const labelRes = await client.generateLabel(shipmentId);
+        labelUrl = labelRes.label_url || labelRes.response?.label_url || null;
+      } catch (labelErr) {
+        console.warn(`Label generation warning for fulfillment #${f.id}:`, labelErr.message);
+      }
+    }
+
+    // 8. STEP 4: Request Courier Pickup from Vendor's Registered Warehouse
+    let pickupTokenNumber = f.pickup_token_number;
+    let pickupScheduledDate = f.pickup_scheduled_date;
+
+    if (!pickupTokenNumber && client.requestPickup) {
+      try {
+        const pickupRes = await client.requestPickup(shipmentId);
+        pickupTokenNumber = pickupRes.response?.pickup_token_number || 
+                            pickupRes.pickup_token_number || 
+                            pickupRes.response?.data?.pickup_token_number ||
+                            pickupRes.pickup_id ||
+                            'PICKUP_SCHEDULED';
+
+        const rawScheduledDate = pickupRes.response?.pickup_scheduled_date || 
+                                 pickupRes.pickup_scheduled_date || 
+                                 pickupRes.response?.data?.pickup_scheduled_date;
+        pickupScheduledDate = rawScheduledDate ? new Date(rawScheduledDate) : new Date();
+      } catch (pickupErr) {
+        console.error(`Pickup scheduling failed for fulfillment #${f.id}:`, pickupErr.message);
+        const errMsg = `AWB assigned (${awbCode}), but courier pickup booking failed: ${pickupErr.message}`;
+        // Persist AWB & label with 'processing' status (NOT 'ready_to_ship' or 'shipped')
+        // Retrying Dispatch will resume directly at pickup request without duplicate order or AWB
+        await dbClient.query(
+          `UPDATE order_fulfillments 
+           SET awb_code = $1, courier_name = $2, courier_company_id = $3, tracking_url = $4,
+               label_url = COALESCE($5, label_url), sync_error = $6, status = 'processing', updated_at = NOW()
+           WHERE id = $7`,
+          [awbCode, courierName, courierCompanyId, trackingUrl, labelUrl, errMsg, f.id]
+        );
+        const err = new Error(errMsg);
+        err.statusCode = 502;
+        throw err;
+      }
+    }
+
+    // 9. STEP 5: Persist successful dispatch & pickup details
+    // The fulfillment status is 'ready_to_ship' (Pickup Scheduled) only when pickup booking succeeded
+    const newStatus = 'ready_to_ship';
+
     const updatedFulRes = await dbClient.query(
       `UPDATE order_fulfillments 
-       SET status = 'shipped',
-           awb_code = $1,
-           courier_name = $2,
-           courier_company_id = $3,
-           tracking_url = $4,
-           shipped_at = NOW(),
+       SET status = $1,
+           awb_code = $2,
+           courier_name = $3,
+           courier_company_id = $4,
+           tracking_url = $5,
+           label_url = COALESCE($6, label_url),
+           pickup_token_number = $7,
+           pickup_scheduled_date = $8,
+           shipped_at = COALESCE(shipped_at, NOW()),
            sync_error = NULL,
            updated_at = NOW()
-       WHERE id = $5
+       WHERE id = $9
        RETURNING *`,
-      [awbCode, courierName, courierCompanyId, trackingUrl, f.id]
+      [
+        newStatus,
+        awbCode,
+        courierName,
+        courierCompanyId,
+        trackingUrl,
+        labelUrl,
+        pickupTokenNumber,
+        pickupScheduledDate,
+        f.id
+      ]
     );
 
-    // 8. Update parent order status dynamically
+    // 10. Update parent order status dynamically
     await updateParentOrderStatus(f.order_id, dbClient);
 
     return {
       success: true,
+      status: newStatus,
       awb: awbCode,
       courier: courierName,
       tracking_link: trackingUrl,
+      label_url: labelUrl,
+      pickup_token_number: pickupTokenNumber,
+      pickup_scheduled_date: pickupScheduledDate,
       fulfillment: updatedFulRes.rows[0]
     };
   } catch (err) {

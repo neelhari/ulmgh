@@ -80,21 +80,25 @@ export function AdminOrdersPage() {
           if (f.id !== fulfillmentId) return f;
           return {
             ...f,
-            status: "shipped",
+            status: data.status || "ready_to_ship",
             awb_code: data.awb,
             courier_name: data.courier,
             tracking_url: data.tracking_link,
+            label_url: data.label_url,
+            pickup_token_number: data.pickup_token_number,
+            pickup_scheduled_date: data.pickup_scheduled_date,
             sync_error: null
           };
         });
         const allShipped = updatedFulfillments.every(f => f.status === 'shipped' || f.status === 'delivered');
         return {
           ...o,
-          status: allShipped ? 'shipped' : 'partially_shipped',
+          status: allShipped ? 'shipped' : (updatedFulfillments.some(f => f.status === 'shipped') ? 'partially_shipped' : o.status),
           fulfillments: updatedFulfillments
         };
       }));
-      alert(`Shipment created! AWB: ${data.awb} (${data.courier || 'Courier'})`);
+      const pickupMsg = data.pickup_token_number ? ` | Pickup Scheduled (Token: ${data.pickup_token_number})` : '';
+      alert(`Shipment arranged! AWB: ${data.awb} (${data.courier || 'Courier'})${pickupMsg}`);
     } catch (err) {
       alert(`Dispatch error: ${err.message}`);
       setOrders((prev) => prev.map((o) => {
@@ -518,9 +522,10 @@ export function AdminOrdersPage() {
                                 </div>
                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                                   ful.status === 'shipped' || ful.status === 'delivered' ? 'bg-green-100 text-green-700' :
+                                  ful.status === 'ready_to_ship' ? 'bg-blue-100 text-blue-700' :
                                   ful.status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
                                 }`}>
-                                  {ful.status || 'Pending'}
+                                  {ful.status === 'ready_to_ship' ? 'Pickup Scheduled' : (ful.status || 'Pending')}
                                 </span>
                               </div>
 
@@ -536,15 +541,32 @@ export function AdminOrdersPage() {
                               )}
 
                               {ful.awb_code ? (
-                                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5">
-                                  <span className="text-green-800 font-bold text-xs truncate">
-                                    AWB: {ful.awb_code} {ful.courier_name ? `(${ful.courier_name})` : ''}
-                                  </span>
-                                  {ful.tracking_url && (
-                                    <a href={ful.tracking_url} target="_blank" rel="noopener noreferrer"
-                                      className="ml-auto text-green-700 hover:text-green-900">
-                                      <ExternalLink className="w-3.5 h-3.5" />
-                                    </a>
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5">
+                                    <span className="text-green-800 font-bold text-xs truncate">
+                                      AWB: {ful.awb_code} {ful.courier_name ? `(${ful.courier_name})` : ''}
+                                    </span>
+                                    {ful.tracking_url && (
+                                      <a href={ful.tracking_url} target="_blank" rel="noopener noreferrer"
+                                        className="ml-auto text-green-700 hover:text-green-900" title="Live Tracking">
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </a>
+                                    )}
+                                  </div>
+                                  {(ful.pickup_token_number || ful.label_url) && (
+                                    <div className="flex items-center justify-between text-[11px] text-gray-600 px-1 pt-0.5">
+                                      {ful.pickup_token_number && (
+                                        <span className="text-blue-700 font-medium">
+                                          Pickup Token: <strong>{ful.pickup_token_number}</strong>
+                                        </span>
+                                      )}
+                                      {ful.label_url && (
+                                        <a href={ful.label_url} target="_blank" rel="noopener noreferrer"
+                                          className="text-brand-orange underline font-semibold ml-auto">
+                                          Print Label
+                                        </a>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               ) : (

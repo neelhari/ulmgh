@@ -488,16 +488,21 @@ export function VendorOrdersPage() {
                             </p>
                           )}
                           {order.awb ? (
-                            <div className="flex items-center justify-between p-2 rounded-lg bg-green-50 border border-green-200 mt-1">
-                              <span className="font-bold text-green-800 text-xs">
-                                🚚 {order.courier || 'Courier'}: {order.awb}
-                              </span>
-                              {order.tracking_link && (
-                                <a href={order.tracking_link} target="_blank" rel="noopener noreferrer"
-                                  className="text-green-700 underline font-bold text-xs">
-                                  Track
-                                </a>
-                              )}
+                            <div className="space-y-1.5 mt-1">
+                              <div className="flex items-center justify-between p-2 rounded-lg bg-green-50 border border-green-200">
+                                <span className="font-bold text-green-800 text-xs">
+                                  🚚 {order.courier || 'Courier'}: {order.awb}
+                                </span>
+                                {order.tracking_link && (
+                                  <a href={order.tracking_link} target="_blank" rel="noopener noreferrer"
+                                    className="text-green-700 underline font-bold text-xs">
+                                    Track
+                                  </a>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-blue-700 font-medium px-1">
+                                ✓ Courier collection arranged from your registered warehouse.
+                              </p>
                             </div>
                           ) : (
                             <p className="text-gray-500 text-[11px] italic">
