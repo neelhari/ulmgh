@@ -403,7 +403,7 @@ router.post('/razorpay/order', async (req, res) => {
     };
 
     const order = await razorpay.orders.create(options);
-    res.json({ success: true, order, calculated_amount: chargeAmount });
+    res.json({ success: true, order, key: process.env.RAZORPAY_KEY_ID, calculated_amount: chargeAmount });
   } catch (err) {
     console.error('Razorpay order creation error:', err);
     res.status(err.statusCode || 500).json({ error: err.message || 'Failed to create Razorpay order' });

@@ -293,8 +293,14 @@ export function CheckoutPage() {
         return;
       }
 
+      if (!orderData.key) {
+        alert('Payment gateway key was not returned by the server. Please try again or contact support.');
+        setIsPlacingOrder(false);
+        return;
+      }
+
       const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+        key: orderData.key,
         amount: orderData.order.amount,
         currency: orderData.order.currency,
         name: 'Tradition Store',
