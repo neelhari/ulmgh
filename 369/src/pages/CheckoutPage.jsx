@@ -29,6 +29,7 @@ export function CheckoutPage() {
   });
   const [paymentMethod, setPaymentMethod] = useState('razorpay');
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [orderConfirmed, setOrderConfirmed] = useState(false);
   
   // Mapbox Address Search & Geolocation State
   const [addressSearch, setAddressSearch] = useState('');
@@ -217,7 +218,7 @@ export function CheckoutPage() {
   }, [token, step, user]);
 
   useGSAP(() => {
-    if (isPlacingOrder) {
+    if (orderConfirmed) {
       const tl = gsap.timeline();
       
       tl.from(overlayRef.current, { opacity: 0, duration: 0.3, ease: 'power2.out' })
@@ -225,7 +226,7 @@ export function CheckoutPage() {
         .from(textRef.current, { y: 20, opacity: 0, duration: 0.4, ease: 'power2.out' }, "-=0.2")
         .to(iconRef.current, { scale: 1.1, duration: 0.3, yoyo: true, repeat: 1, ease: 'sine.inOut', delay: 0.2 });
     }
-  }, { dependencies: [isPlacingOrder] });
+  }, { dependencies: [orderConfirmed] });
 
   const loadRazorpay = () => {
     return new Promise((resolve) => {
@@ -329,6 +330,7 @@ export function CheckoutPage() {
                 razorpay_signature: response.razorpay_signature,
               });
               if (createOrderData.success) {
+                setOrderConfirmed(true);
                 setTimeout(() => {
                   clearCart();
                   navigate(`/order-tracking/${createOrderData.order.order_number}`);
@@ -336,14 +338,17 @@ export function CheckoutPage() {
               } else {
                 alert(createOrderData.error || 'Failed to place order after payment.');
                 setIsPlacingOrder(false);
+                setOrderConfirmed(false);
               }
             } else {
               alert(verifyData.error || 'Payment verification failed');
               setIsPlacingOrder(false);
+              setOrderConfirmed(false);
             }
           } catch (err) {
             console.error(err);
             setIsPlacingOrder(false);
+            setOrderConfirmed(false);
           }
         },
         prefill: {
@@ -354,6 +359,7 @@ export function CheckoutPage() {
         modal: {
           ondismiss: function () {
             setIsPlacingOrder(false);
+            setOrderConfirmed(false);
           }
         }
       };
@@ -798,7 +804,7 @@ export function CheckoutPage() {
       </div>
 
       {/* Order Placed Success Overlay */}
-      {isPlacingOrder && (
+      {orderConfirmed && (
         <div ref={overlayRef} className="fixed inset-0 z-[100] bg-[#020617]/90 backdrop-blur-md flex flex-col items-center justify-center w-full h-full">
           <div className="flex flex-col items-center gap-5">
             <div ref={iconRef} className="w-24 h-24 bg-brand-orange/20 border-2 border-brand-orange rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(255,123,0,0.5)]">

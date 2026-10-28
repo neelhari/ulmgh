@@ -247,15 +247,35 @@ router.post('/orders', validate(orderSchema), async (req, res) => {
     const pMethod = payment_method || 'prepaid';
     const advancePaid = pMethod === 'cod' ? 1 : calculatedTotal;
 
-    // Check payment reuse via razorpay_payment_id
+    // Check payment reuse via razorpay_payment_id or razorpay_order_id (Idempotent: return existing confirmed order)
     if (razorpay_payment_id) {
       try {
-        const dupCheck = await pool.query('SELECT id FROM orders WHERE razorpay_payment_id = $1', [razorpay_payment_id]);
+        const dupCheck = await pool.query('SELECT * FROM orders WHERE razorpay_payment_id = $1', [razorpay_payment_id]);
         if (dupCheck.rows.length > 0) {
-          return res.status(400).json({ error: 'This payment has already been used for another order' });
+          return res.json({ success: true, order: dupCheck.rows[0], message: 'Order already confirmed' });
         }
       } catch (colErr) {
         // Continue if column not created yet prior to running MIGRATION.sql
+      }
+    }
+
+    if (razorpay_order_id) {
+      try {
+        const orderIdCheck = await pool.query('SELECT * FROM orders WHERE razorpay_order_id = $1', [razorpay_order_id]);
+        if (orderIdCheck.rows.length > 0) {
+          const existing = orderIdCheck.rows[0];
+          if (existing.status !== 'paid' && pMethod !== 'cod') {
+            await pool.query(
+              'UPDATE orders SET status = $1, razorpay_payment_id = COALESCE(razorpay_payment_id, $2) WHERE id = $3',
+              [orderStatus, razorpay_payment_id || null, existing.id]
+            );
+            existing.status = orderStatus;
+            existing.razorpay_payment_id = razorpay_payment_id || existing.razorpay_payment_id;
+          }
+          return res.json({ success: true, order: existing, message: 'Order already confirmed' });
+        }
+      } catch (colErr) {
+        // Continue if column not created yet
       }
     }
 
@@ -301,17 +321,29 @@ router.post('/orders', validate(orderSchema), async (req, res) => {
 
       try {
         result = await client.query(
-          `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid, razorpay_payment_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-          [orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid, razorpay_payment_id || null]
+          `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid, razorpay_order_id, razorpay_payment_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+          [orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid, razorpay_order_id || null, razorpay_payment_id || null]
         );
       } catch (dbErr) {
         if (dbErr.code === '42703') { // undefined_column before migration
-          result = await client.query(
-            `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid]
-          );
+          try {
+            result = await client.query(
+              `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid, razorpay_payment_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+              [orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid, razorpay_payment_id || null]
+            );
+          } catch (dbErr2) {
+            if (dbErr2.code === '42703') {
+              result = await client.query(
+                `INSERT INTO orders (order_number, total, items, address, status, payment_method, advance_paid)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+                [orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid]
+              );
+            } else {
+              throw dbErr2;
+            }
+          }
         } else {
           throw dbErr;
         }
@@ -346,6 +378,15 @@ router.post('/orders', validate(orderSchema), async (req, res) => {
       await client.query('COMMIT');
     } catch (txErr) {
       await client.query('ROLLBACK');
+      if (txErr.code === '23505' && razorpay_payment_id) {
+        try {
+          const dup = await pool.query('SELECT * FROM orders WHERE razorpay_payment_id = $1', [razorpay_payment_id]);
+          if (dup.rows.length > 0) {
+            client.release();
+            return res.json({ success: true, order: dup.rows[0], message: 'Order already confirmed' });
+          }
+        } catch (e) {}
+      }
       throw txErr;
     } finally {
       client.release();
@@ -425,6 +466,22 @@ router.post('/razorpay/verify', async (req, res) => {
       .digest('hex');
 
     if (generated_signature === razorpay_signature) {
+      // If an existing order has this razorpay_order_id or razorpay_payment_id, update status to paid
+      try {
+        const existingOrder = await pool.query(
+          'SELECT id, status FROM orders WHERE razorpay_order_id = $1 OR razorpay_payment_id = $2 LIMIT 1',
+          [razorpay_order_id, razorpay_payment_id]
+        );
+        if (existingOrder.rows.length > 0 && existingOrder.rows[0].status !== 'paid') {
+          await pool.query(
+            'UPDATE orders SET status = $1, razorpay_payment_id = COALESCE(razorpay_payment_id, $2) WHERE id = $3',
+            ['paid', razorpay_payment_id, existingOrder.rows[0].id]
+          );
+        }
+      } catch (dbErr) {
+        // Table columns might not exist in all environments
+      }
+
       res.json({ success: true, message: 'Payment verified successfully' });
     } else {
       res.status(400).json({ error: 'Invalid signature' });
@@ -432,6 +489,48 @@ router.post('/razorpay/verify', async (req, res) => {
   } catch (err) {
     console.error('Razorpay verification error:', err);
     res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
+// GET /api/general/orders/:orderNumber - Fetch order details & tracking for confirmation & tracking pages
+router.get('/orders/:orderNumber', async (req, res) => {
+  const { orderNumber } = req.params;
+  try {
+    const orderRes = await pool.query(
+      `SELECT id, order_number, total, items, address, status, payment_method, advance_paid, created_at
+       FROM orders
+       WHERE order_number = $1
+       LIMIT 1`,
+      [orderNumber]
+    );
+
+    if (orderRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orderRes.rows[0];
+
+    // Fetch fulfillments if table exists
+    try {
+      const fulRes = await pool.query(
+        `SELECT f.id, f.fulfillment_number, f.status, f.subtotal, f.total_amount, f.awb_code, f.courier_name, 
+                f.tracking_url, f.shipped_at, f.delivered_at, f.vendor_id,
+                v.name as vendor_name, v.store_name
+         FROM order_fulfillments f
+         LEFT JOIN vendors v ON f.vendor_id = v.id
+         WHERE f.order_id = $1
+         ORDER BY f.id ASC`,
+        [order.id]
+      );
+      order.fulfillments = fulRes.rows;
+    } catch (fulErr) {
+      order.fulfillments = [];
+    }
+
+    res.json({ success: true, order });
+  } catch (err) {
+    console.error('Fetch order error:', err);
+    res.status(500).json({ error: 'Failed to fetch order details' });
   }
 });
 

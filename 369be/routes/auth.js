@@ -554,15 +554,35 @@ router.post('/orders', authMiddleware, validate(orderSchema), async (req, res) =
     const pMethod = payment_method || 'prepaid';
     const advancePaid = pMethod === 'cod' ? 1 : calculatedTotal;
 
-    // Check payment reuse via razorpay_payment_id
+    // Check payment reuse via razorpay_payment_id or razorpay_order_id (Idempotent: return existing confirmed order)
     if (razorpay_payment_id) {
       try {
-        const dupCheck = await pool.query('SELECT id FROM orders WHERE razorpay_payment_id = $1', [razorpay_payment_id]);
+        const dupCheck = await pool.query('SELECT * FROM orders WHERE razorpay_payment_id = $1', [razorpay_payment_id]);
         if (dupCheck.rows.length > 0) {
-          return res.status(400).json({ error: 'This payment has already been used for another order' });
+          return res.json({ success: true, order: dupCheck.rows[0], message: 'Order already confirmed' });
         }
       } catch (colErr) {
         // Continue if column not created yet prior to running MIGRATION.sql
+      }
+    }
+
+    if (razorpay_order_id) {
+      try {
+        const orderIdCheck = await pool.query('SELECT * FROM orders WHERE razorpay_order_id = $1', [razorpay_order_id]);
+        if (orderIdCheck.rows.length > 0) {
+          const existing = orderIdCheck.rows[0];
+          if (existing.status !== 'paid' && pMethod !== 'cod') {
+            await pool.query(
+              'UPDATE orders SET status = $1, razorpay_payment_id = COALESCE(razorpay_payment_id, $2) WHERE id = $3',
+              [orderStatus, razorpay_payment_id || null, existing.id]
+            );
+            existing.status = orderStatus;
+            existing.razorpay_payment_id = razorpay_payment_id || existing.razorpay_payment_id;
+          }
+          return res.json({ success: true, order: existing, message: 'Order already confirmed' });
+        }
+      } catch (colErr) {
+        // Continue if column not created yet
       }
     }
 
@@ -608,17 +628,29 @@ router.post('/orders', authMiddleware, validate(orderSchema), async (req, res) =
 
       try {
         result = await client.query(
-          `INSERT INTO orders (user_id, order_number, total, items, address, status, payment_method, advance_paid, razorpay_payment_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-          [req.user.id, orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid, razorpay_payment_id || null]
+          `INSERT INTO orders (user_id, order_number, total, items, address, status, payment_method, advance_paid, razorpay_order_id, razorpay_payment_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+          [req.user.id, orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid, razorpay_order_id || null, razorpay_payment_id || null]
         );
       } catch (dbErr) {
         if (dbErr.code === '42703') { // undefined_column before migration
-          result = await client.query(
-            `INSERT INTO orders (user_id, order_number, total, items, address, status, payment_method, advance_paid)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [req.user.id, orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid]
-          );
+          try {
+            result = await client.query(
+              `INSERT INTO orders (user_id, order_number, total, items, address, status, payment_method, advance_paid, razorpay_payment_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+              [req.user.id, orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid, razorpay_payment_id || null]
+            );
+          } catch (dbErr2) {
+            if (dbErr2.code === '42703') {
+              result = await client.query(
+                `INSERT INTO orders (user_id, order_number, total, items, address, status, payment_method, advance_paid)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+                [req.user.id, orderNumber, calculatedTotal, itemsJson, addressJson, orderStatus, pMethod, advancePaid]
+              );
+            } else {
+              throw dbErr2;
+            }
+          }
         } else {
           throw dbErr;
         }
@@ -653,6 +685,15 @@ router.post('/orders', authMiddleware, validate(orderSchema), async (req, res) =
       await client.query('COMMIT');
     } catch (txErr) {
       await client.query('ROLLBACK');
+      if (txErr.code === '23505' && razorpay_payment_id) {
+        try {
+          const dup = await pool.query('SELECT * FROM orders WHERE razorpay_payment_id = $1', [razorpay_payment_id]);
+          if (dup.rows.length > 0) {
+            client.release();
+            return res.json({ success: true, order: dup.rows[0], message: 'Order already confirmed' });
+          }
+        } catch (e) {}
+      }
       throw txErr;
     } finally {
       client.release();

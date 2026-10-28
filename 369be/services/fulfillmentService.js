@@ -43,96 +43,123 @@ async function createFulfillmentsForOrder(order, verifiedItems, client) {
 
   const createdFulfillments = [];
 
-  // 2. Insert fulfillment and line items for each vendor group
-  for (const [groupKey, group] of Object.entries(vendorGroups)) {
-    const { vendor_id, items, subtotal, totalWeight } = group;
+  try {
+    if (client && client.query) {
+      await client.query('SAVEPOINT fulfillments_savepoint');
+    }
 
-    let pickupNickname = null;
-    let pickupId = null;
+    // 2. Insert fulfillment and line items for each vendor group
+    for (const [groupKey, group] of Object.entries(vendorGroups)) {
+      const { vendor_id, items, subtotal, totalWeight } = group;
 
-    if (vendor_id) {
-      // Query vendor for live pickup location snapshots
-      const vendorRes = await client.query(
-        'SELECT name, status, is_pickup_synced, shiprocket_pickup_nickname, shiprocket_pickup_id FROM vendors WHERE id = $1',
-        [vendor_id]
-      );
-      const v = vendorRes.rows[0];
-      if (v) {
-        pickupNickname = v.shiprocket_pickup_nickname || null;
-        pickupId = v.shiprocket_pickup_id ? String(v.shiprocket_pickup_id) : null;
+      let pickupNickname = null;
+      let pickupId = null;
+
+      if (vendor_id) {
+        // Query vendor for live pickup location snapshots
+        const vendorRes = await client.query(
+          'SELECT * FROM vendors WHERE id = $1',
+          [vendor_id]
+        );
+        const v = vendorRes.rows[0];
+        if (v) {
+          pickupNickname = v.shiprocket_pickup_nickname || null;
+          pickupId = v.shiprocket_pickup_id ? String(v.shiprocket_pickup_id) : null;
+        }
+      } else {
+        // Platform / in-house items use platform primary pickup location
+        pickupNickname = process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary';
+        pickupId = null;
       }
-    } else {
-      // Platform / in-house items use platform primary pickup location
-      pickupNickname = process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary';
-      pickupId = null;
-    }
 
-    // Convert total weight grams to kg if > 50g, default to 0.5kg
-    let pkgWeight = totalWeight;
-    if (pkgWeight > 50) {
-      pkgWeight = pkgWeight / 1000;
-    }
-    pkgWeight = pkgWeight > 0 ? parseFloat(pkgWeight.toFixed(2)) : 0.5;
+      // Convert total weight grams to kg if > 50g, default to 0.5kg
+      let pkgWeight = totalWeight;
+      if (pkgWeight > 50) {
+        pkgWeight = pkgWeight / 1000;
+      }
+      pkgWeight = pkgWeight > 0 ? parseFloat(pkgWeight.toFixed(2)) : 0.5;
 
-    const fulfillmentNumber = vendor_id
-      ? `${order.order_number || order.id}-V${vendor_id}`
-      : `${order.order_number || order.id}-P`;
+      const fulfillmentNumber = vendor_id
+        ? `${order.order_number || order.id}-V${vendor_id}`
+        : `${order.order_number || order.id}-P`;
 
-    const status = (order.payment_method === 'cod') ? 'pending' : 'paid';
+      const status = (order.payment_method === 'cod') ? 'pending' : 'paid';
 
-    // Insert order_fulfillments (idempotent ON CONFLICT)
-    const fulRes = await client.query(
-      `INSERT INTO order_fulfillments 
-       (order_id, vendor_id, fulfillment_number, status, subtotal, total_amount, package_weight, pickup_location_nickname, shiprocket_pickup_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (fulfillment_number) DO UPDATE SET updated_at = NOW()
-       RETURNING *`,
-      [
-        order.id,
-        vendor_id,
-        fulfillmentNumber,
-        status,
-        subtotal,
-        subtotal, // total_amount
-        pkgWeight,
-        pickupNickname,
-        pickupId
-      ]
-    );
-
-    const fulfillment = fulRes.rows[0];
-
-    // Insert order_fulfillment_items
-    for (const it of items) {
-      const prodId = it.product?.id || it.id || null;
-      const prodName = it.product?.name || it.name || 'Product';
-      const sku = it.variant?.size || it.product?.sku || 'Default';
-      const variantDetails = {
-        size: it.variant?.size || null,
-        color: it.variant?.color || null,
-        ...(typeof it.variant === 'object' ? it.variant : {})
-      };
-
-      await client.query(
-        `INSERT INTO order_fulfillment_items
-         (fulfillment_id, order_id, product_id, product_name, sku, variant_details, quantity, unit_price, total_price, weight)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      // Insert order_fulfillments (idempotent ON CONFLICT)
+      const fulRes = await client.query(
+        `INSERT INTO order_fulfillments 
+         (order_id, vendor_id, fulfillment_number, status, subtotal, total_amount, package_weight, pickup_location_nickname, shiprocket_pickup_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (fulfillment_number) DO UPDATE SET updated_at = NOW()
+         RETURNING *`,
         [
-          fulfillment.id,
           order.id,
-          prodId,
-          prodName,
-          sku,
-          JSON.stringify(variantDetails),
-          it.qty,
-          it.unitPrice,
-          it.totalPrice,
-          it.weight
+          vendor_id,
+          fulfillmentNumber,
+          status,
+          subtotal,
+          subtotal, // total_amount
+          pkgWeight,
+          pickupNickname,
+          pickupId
         ]
       );
+
+      const fulfillment = fulRes.rows[0];
+
+      // Insert order_fulfillment_items
+      for (const it of items) {
+        let prodId = it.product?.id || it.id || null;
+        if (prodId) {
+          try {
+            const pCheck = await client.query('SELECT id FROM products WHERE id = $1', [prodId]);
+            if (pCheck.rows.length === 0) {
+              prodId = null;
+            }
+          } catch (pErr) {
+            prodId = null;
+          }
+        }
+        const prodName = it.product?.name || it.name || 'Product';
+        const sku = it.variant?.size || it.product?.sku || 'Default';
+        const variantDetails = {
+          size: it.variant?.size || null,
+          color: it.variant?.color || null,
+          ...(typeof it.variant === 'object' ? it.variant : {})
+        };
+
+        await client.query(
+          `INSERT INTO order_fulfillment_items
+           (fulfillment_id, order_id, product_id, product_name, sku, variant_details, quantity, unit_price, total_price, weight)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [
+            fulfillment.id,
+            order.id,
+            prodId,
+            prodName,
+            sku,
+            JSON.stringify(variantDetails),
+            it.qty,
+            it.unitPrice,
+            it.totalPrice,
+            it.weight
+          ]
+        );
+      }
+
+      createdFulfillments.push({ ...fulfillment, items });
     }
 
-    createdFulfillments.push({ ...fulfillment, items });
+    if (client && client.query) {
+      await client.query('RELEASE SAVEPOINT fulfillments_savepoint');
+    }
+  } catch (fulErr) {
+    console.warn('Fulfillment creation non-fatal warning (rolling back to savepoint):', fulErr.message);
+    if (client && client.query) {
+      try {
+        await client.query('ROLLBACK TO SAVEPOINT fulfillments_savepoint');
+      } catch (rbErr) {}
+    }
   }
 
   return createdFulfillments;

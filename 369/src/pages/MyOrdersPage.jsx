@@ -8,6 +8,7 @@ import { Capacitor } from '@capacitor/core';
 
 const STATUS_COLORS = {
   pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  paid: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   processing: 'bg-blue-100 text-blue-700 border-blue-200',
   partially_shipped: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   shipped: 'bg-purple-100 text-purple-700 border-purple-200',
@@ -230,7 +231,7 @@ export function MyOrdersPage() {
           </div>
         ) : (
           orders.map((order) => {
-            const stepIdx = STATUS_STEPS.indexOf(order.status);
+            const stepIdx = order.status === 'paid' ? 0 : STATUS_STEPS.indexOf(order.status);
             return (
               <div key={order.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-4 border-b border-[#054335] bg-[#022A21]">
@@ -353,6 +354,12 @@ export function MyOrdersPage() {
 
                 {/* Footer Actions */}
                 <div className="flex flex-col sm:flex-row items-center justify-end gap-3 px-6 py-4 bg-orange-50/50 border-t border-brand-orange/20">
+                  <Link
+                    to={`/order-tracking/${order.order_number || order.id}`}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 bg-brand-orange text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-orange-600 transition-colors shadow-sm"
+                  >
+                    <Package className="w-4 h-4" /> Track Order
+                  </Link>
                   {!Capacitor.isNativePlatform() && (
                     <button onClick={() => openInvoice(order)}
                       className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white text-brand-orange border border-brand-orange/30 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-orange-50 transition-colors shadow-sm">
