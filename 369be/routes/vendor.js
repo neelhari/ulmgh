@@ -1,6 +1,12 @@
 const router = require('express').Router();
 const pool = require('../db');
 const { vendorAuthMiddleware } = require('./vendorAuth');
+const {
+  validatePickupAddress,
+  generateShiprocketNickname,
+  formatFullAddress,
+  INDIAN_STATES
+} = require('../utils/pickupValidation');
 
 router.use(vendorAuthMiddleware);
 
@@ -184,26 +190,94 @@ router.delete('/products/:id', async (req, res) => {
   }
 });
 
-// --- Orders ---
+// --- Orders (Phase 3 Multi-Vendor Fulfillment) ---
 router.get('/orders', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
-    const vendorOrders = [];
+    const fulRes = await pool.query(
+      `SELECT f.*, 
+              o.order_number, o.created_at as order_created_at, o.payment_method, o.address as order_address,
+              u.name as user_name, u.email as user_email, u.phone as user_phone
+       FROM order_fulfillments f
+       JOIN orders o ON f.order_id = o.id
+       LEFT JOIN users u ON o.user_id = u.id
+       WHERE f.vendor_id = $1
+       ORDER BY f.created_at DESC`,
+      [req.vendorId]
+    );
 
-    result.rows.forEach(order => {
-      let items = [];
-      try { items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []); } catch(e) {}
+    const vendorOrders = [];
+    for (const f of fulRes.rows) {
+      const itemsRes = await pool.query(
+        'SELECT * FROM order_fulfillment_items WHERE fulfillment_id = $1 ORDER BY id ASC',
+        [f.id]
+      );
       
-      const vendorItems = items.filter(item => item.product && item.product.vendor_id === req.vendorId);
-      if (vendorItems.length > 0) {
-        order.items = vendorItems; // Only show their items
-        // Recalculate order total for this vendor
-        order.total = vendorItems.reduce((acc, item) => acc + (item.qty * (item.variant?.price || item.product?.price || 0)), 0);
-        vendorOrders.push(order);
+      let parsedAddress = {};
+      try {
+        parsedAddress = typeof f.order_address === 'string' ? JSON.parse(f.order_address) : (f.order_address || {});
+      } catch (e) {
+        parsedAddress = {};
       }
-    });
+
+      const items = itemsRes.rows.map(it => ({
+        id: it.product_id,
+        qty: it.quantity,
+        price: it.unit_price,
+        variant: it.variant_details || {},
+        product: {
+          id: it.product_id,
+          name: it.product_name,
+          vendor_id: f.vendor_id,
+          price: it.unit_price
+        }
+      }));
+
+      vendorOrders.push({
+        id: f.id,
+        fulfillment_id: f.id,
+        fulfillment_number: f.fulfillment_number,
+        order_id: f.order_id,
+        order_number: f.order_number,
+        status: f.status,
+        total: f.total_amount,
+        subtotal: f.subtotal,
+        awb: f.awb_code,
+        courier: f.courier_name,
+        tracking_link: f.tracking_url,
+        sync_error: f.sync_error,
+        pickup_location_nickname: f.pickup_location_nickname,
+        address: parsedAddress,
+        user_name: f.user_name,
+        user_phone: f.user_phone,
+        created_at: f.order_created_at || f.created_at,
+        items
+      });
+    }
 
     res.json({ orders: vendorOrders });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/vendor/fulfillments/:id/status
+router.put('/fulfillments/:id/status', async (req, res) => {
+  const { status } = req.body;
+  if (!['pending', 'processing', 'ready_to_ship'].includes(status)) {
+    return res.status(400).json({ error: 'Vendors can only update status to pending, processing, or ready_to_ship' });
+  }
+  try {
+    const updateRes = await pool.query(
+      `UPDATE order_fulfillments 
+       SET status = $1, updated_at = NOW() 
+       WHERE id = $2 AND vendor_id = $3 
+       RETURNING *`,
+      [status, req.params.id, req.vendorId]
+    );
+    if (updateRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Fulfillment not found or unauthorized' });
+    }
+    res.json({ fulfillment: updateRes.rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -486,6 +560,29 @@ router.delete('/account', async (req, res) => {
   } catch (err) {
     console.error('Account deletion error:', err);
     res.status(500).json({ error: 'Failed to delete account. Please try again later.' });
+  }
+});
+
+// --- Vendor Profile & Pickup Warehouse Address ---
+// GET /api/vendor/pickup-states
+router.get('/pickup-states', (req, res) => {
+  res.json({ states: INDIAN_STATES });
+});
+
+const { handleVendorAddressUpdate } = require('../services/vendorPickupService');
+
+// PUT /api/vendor/profile
+router.put('/profile', async (req, res) => {
+  try {
+    const result = await handleVendorAddressUpdate(req.vendorId, req.body);
+    res.json({
+      message: result.message,
+      vendor: result.vendor,
+      syncResult: result.syncResult,
+    });
+  } catch (err) {
+    console.error('Update vendor profile error:', err);
+    res.status(400).json({ error: err.message || 'Failed to update pickup location' });
   }
 });
 

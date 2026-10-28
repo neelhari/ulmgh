@@ -9,6 +9,7 @@ import { Capacitor } from '@capacitor/core';
 const STATUS_COLORS = {
   pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
   processing: 'bg-blue-100 text-blue-700 border-blue-200',
+  partially_shipped: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   shipped: 'bg-purple-100 text-purple-700 border-purple-200',
   delivered: 'bg-green-100 text-green-700 border-green-200',
   cancelled: 'bg-red-100 text-red-700 border-red-200',
@@ -277,6 +278,48 @@ export function MyOrdersPage() {
                           </span>
                         ))}
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Multi-Vendor Packages / Tracking */}
+                {order.fulfillments && order.fulfillments.length > 0 && (
+                  <div className="px-6 py-3.5 bg-orange-50/30 border-b border-gray-100 space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                      Dispatched in {order.fulfillments.length} {order.fulfillments.length === 1 ? 'Package' : 'Separate Packages'}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {order.fulfillments.map((ful, idx) => (
+                        <div key={ful.id} className="p-3 bg-white border border-gray-200/80 rounded-xl text-xs space-y-1.5 shadow-2xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-gray-900">
+                              📦 Package {idx + 1} {ful.vendor_name ? `(${ful.vendor_name})` : ''}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${
+                              ful.status === 'shipped' || ful.status === 'delivered' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {ful.status || 'Processing'}
+                            </span>
+                          </div>
+                          {ful.awb_code ? (
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-[11px] text-gray-600 truncate">
+                                Courier: <strong>{ful.courier_name || 'Assigned'}</strong> (AWB: {ful.awb_code})
+                              </span>
+                              {ful.tracking_url && (
+                                <a href={ful.tracking_url} target="_blank" rel="noopener noreferrer"
+                                  className="text-[11px] font-bold text-brand-orange underline ml-2 shrink-0">
+                                  Track
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-gray-400 italic">
+                              Preparing for dispatch from vendor warehouse
+                            </p>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}

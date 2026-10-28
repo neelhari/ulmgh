@@ -469,6 +469,44 @@ export function VendorOrdersPage() {
                         )}
                       </div>
 
+                      {/* Package & Dispatch Box */}
+                      <div className="bg-white p-3.5 rounded-xl border border-gray-200/80 shadow-xs space-y-2">
+                        <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+                          <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                            Package & Dispatch
+                          </h4>
+                          {order.fulfillment_number && (
+                            <span className="text-[10px] bg-gray-100 text-gray-700 font-mono px-1.5 py-0.5 rounded">
+                              {order.fulfillment_number}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs space-y-1">
+                          {order.pickup_location_nickname && (
+                            <p className="text-gray-600">
+                              Dispatch Warehouse: <strong className="font-mono text-gray-800">{order.pickup_location_nickname}</strong>
+                            </p>
+                          )}
+                          {order.awb ? (
+                            <div className="flex items-center justify-between p-2 rounded-lg bg-green-50 border border-green-200 mt-1">
+                              <span className="font-bold text-green-800 text-xs">
+                                🚚 {order.courier || 'Courier'}: {order.awb}
+                              </span>
+                              {order.tracking_link && (
+                                <a href={order.tracking_link} target="_blank" rel="noopener noreferrer"
+                                  className="text-green-700 underline font-bold text-xs">
+                                  Track
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-gray-500 text-[11px] italic">
+                              Package awaiting dispatch from your registered warehouse.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
                       {/* Products in this order */}
                       <div className="bg-white p-3.5 rounded-xl border border-gray-200/80 shadow-xs space-y-2.5">
                         <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 pb-1.5">

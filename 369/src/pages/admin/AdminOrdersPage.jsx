@@ -13,12 +13,13 @@ const FROM_ADDRESS = {
   phone: "+91 90326 75205",
 };
 
-const STATUSES = ["pending", "paid", "processing", "shipped", "delivered", "cancelled"];
+const STATUSES = ["pending", "paid", "processing", "partially_shipped", "shipped", "delivered", "cancelled"];
 
 const STATUS_COLORS = {
   pending: "bg-gray-100 text-gray-700",
   paid: "bg-blue-100 text-blue-700",
   processing: "bg-yellow-100 text-yellow-700",
+  partially_shipped: "bg-indigo-100 text-indigo-700",
   shipped: "bg-purple-100 text-purple-700",
   delivered: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-700",
@@ -62,24 +63,49 @@ export function AdminOrdersPage() {
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
   };
 
-  const createShipment = async (orderId) => {
+  const createFulfillmentShipment = async (fulfillmentId, orderId) => {
     const token = localStorage.getItem("token");
-    setShipping((p) => ({ ...p, [orderId]: true }));
+    setShipping((p) => ({ ...p, [fulfillmentId]: true }));
     try {
-      const res = await fetch(`${BACKEND_URL}/admin/orders/${orderId}/ship`, {
+      const res = await fetch(`${BACKEND_URL}/admin/fulfillments/${fulfillmentId}/ship`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed. Backend shipment route might not be configured yet.");
+      if (!res.ok) throw new Error(data.error || "Failed to create shipment");
       
-      setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, tracking_id: data.awb, tracking_link: data.tracking_link, status: "shipped" } : o));
-      setTracking((p) => ({ ...p, [orderId]: { id: data.awb, link: data.tracking_link } }));
-      alert(`Shipment created! AWB: ${data.awb}`);
+      setOrders((prev) => prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const updatedFulfillments = (o.fulfillments || []).map(f => {
+          if (f.id !== fulfillmentId) return f;
+          return {
+            ...f,
+            status: "shipped",
+            awb_code: data.awb,
+            courier_name: data.courier,
+            tracking_url: data.tracking_link,
+            sync_error: null
+          };
+        });
+        const allShipped = updatedFulfillments.every(f => f.status === 'shipped' || f.status === 'delivered');
+        return {
+          ...o,
+          status: allShipped ? 'shipped' : 'partially_shipped',
+          fulfillments: updatedFulfillments
+        };
+      }));
+      alert(`Shipment created! AWB: ${data.awb} (${data.courier || 'Courier'})`);
     } catch (err) {
-      alert(`Shipment status: ${err.message}`);
+      alert(`Dispatch error: ${err.message}`);
+      setOrders((prev) => prev.map((o) => {
+        if (o.id !== orderId) return o;
+        return {
+          ...o,
+          fulfillments: (o.fulfillments || []).map(f => f.id === fulfillmentId ? { ...f, sync_error: err.message } : f)
+        };
+      }));
     } finally {
-      setShipping((p) => ({ ...p, [orderId]: false }));
+      setShipping((p) => ({ ...p, [fulfillmentId]: false }));
     }
   };
 
@@ -464,37 +490,78 @@ export function AdminOrdersPage() {
                     );
                   })()}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-3">
                     <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Update Status</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Order Status</p>
                       <select value={order.status} onChange={(e) => updateStatus(order.id, e.target.value)}
                         className="w-full px-3 py-2 rounded-xl bg-white border border-gray-100 text-gray-900 text-sm focus:outline-none">
                         {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
+
+                    {/* Phase 3 Multi-Vendor Packages / Fulfillments */}
                     <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Shipment</p>
-                      {order.tracking_id && order.tracking_id.trim() !== "" ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
-                            <span className="text-green-700 font-bold text-xs truncate">AWB: {order.tracking_id}</span>
-                            {order.tracking_link && (
-                              <a href={order.tracking_link} target="_blank" rel="noopener noreferrer"
-                                className="ml-auto flex-shrink-0 text-gray-900 hover:opacity-80 transition-colors">
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            )}
-                          </div>
-                          <button onClick={() => createShipment(order.id)} disabled={shipping[order.id]}
-                            className="text-xs text-gray-500 hover:text-gray-900 transition-colors underline">
-                            Re-create shipment
-                          </button>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">
+                        Vendor Dispatch Packages ({order.fulfillments?.length || 1})
+                      </p>
+
+                      {order.fulfillments && order.fulfillments.length > 0 ? (
+                        <div className="space-y-2.5">
+                          {order.fulfillments.map((ful) => (
+                            <div key={ful.id} className="p-3 bg-gray-50 border border-gray-200/80 rounded-xl text-xs space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-gray-900">{ful.vendor_name || 'Platform (In-House)'}</span>
+                                  <span className="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-mono">
+                                    {ful.fulfillment_number}
+                                  </span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                  ful.status === 'shipped' || ful.status === 'delivered' ? 'bg-green-100 text-green-700' :
+                                  ful.status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {ful.status || 'Pending'}
+                                </span>
+                              </div>
+
+                              <div className="text-[11px] text-gray-600 flex items-center justify-between">
+                                <span>Warehouse: <strong className="font-mono text-gray-800">{ful.pickup_location_nickname || 'Primary'}</strong></span>
+                                <span className="font-bold text-gray-900">₹{parseFloat(ful.subtotal || ful.total_amount || 0).toLocaleString()}</span>
+                              </div>
+
+                              {ful.sync_error && (
+                                <p className="text-[10px] text-red-600 bg-red-50 p-1.5 rounded border border-red-200">
+                                  ⚠️ {ful.sync_error}
+                                </p>
+                              )}
+
+                              {ful.awb_code ? (
+                                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5">
+                                  <span className="text-green-800 font-bold text-xs truncate">
+                                    AWB: {ful.awb_code} {ful.courier_name ? `(${ful.courier_name})` : ''}
+                                  </span>
+                                  {ful.tracking_url && (
+                                    <a href={ful.tracking_url} target="_blank" rel="noopener noreferrer"
+                                      className="ml-auto text-green-700 hover:text-green-900">
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                    </a>
+                                  )}
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => createFulfillmentShipment(ful.id, order.id)}
+                                  disabled={shipping[ful.id]}
+                                  className="w-full flex items-center justify-center gap-1.5 bg-[#fe6603] hover:bg-[#e55c02] text-white py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                                >
+                                  {shipping[ful.id] ? "Dispatching..." : `🚚 Dispatch Package (${ful.vendor_name || 'Vendor'})`}
+                                </button>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       ) : (
-                        <button onClick={() => createShipment(order.id)} disabled={shipping[order.id]}
-                          className="w-full flex items-center justify-center gap-2 bg-gray-50 hover:bg-white/20 text-gray-900 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
-                          {shipping[order.id] ? "Creating..." : "🚚 Create Shipment"}
-                        </button>
+                        <p className="text-xs text-gray-500 italic">No fulfillment records found</p>
                       )}
                     </div>
                   </div>

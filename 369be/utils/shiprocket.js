@@ -99,10 +99,41 @@ async function generateLabel(shipmentId) {
   }
 }
 
+async function getPickupLocations() {
+  const token = await authenticate();
+
+  try {
+    const response = await axios.get(`${BASE_URL}/settings/company/pickup`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data?.data?.shipping_address || [];
+  } catch (error) {
+    console.error('Shiprocket Get Pickups Error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to fetch pickup locations from Shiprocket');
+  }
+}
+
+async function registerPickupLocation(pickupData) {
+  const token = await authenticate();
+
+  try {
+    const response = await axios.post(`${BASE_URL}/settings/company/addpickup`, pickupData, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Shiprocket Add Pickup Error:', error.response?.data || error.message);
+    const errMsg = error.response?.data?.message || (error.response?.data?.errors ? JSON.stringify(error.response.data.errors) : error.message);
+    throw new Error(errMsg || 'Failed to register pickup location in Shiprocket');
+  }
+}
+
 module.exports = {
   authenticate,
   createCustomOrder,
   assignAWB,
   requestPickup,
-  generateLabel
+  generateLabel,
+  getPickupLocations,
+  registerPickupLocation
 };

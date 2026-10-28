@@ -6,6 +6,7 @@ const nodemailer = require('nodemailer');
 const { calculateOrder, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD, getDeliveryCharge } = require('../utils/pricing');
 const { verifyRazorpayPayment } = require('../utils/razorpay');
 const { validate, orderSchema } = require('../utils/validation');
+const fulfillmentService = require('../services/fulfillmentService');
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -338,6 +339,9 @@ router.post('/orders', validate(orderSchema), async (req, res) => {
           [vid, 'credit', data.total, orderNumber, `Order ${orderNumber} - ${data.items.length} item(s)`]
         );
       }
+
+      // Phase 3: Atomically create vendor fulfillments
+      await fulfillmentService.createFulfillmentsForOrder(result.rows[0], verifiedItems, client);
 
       await client.query('COMMIT');
     } catch (txErr) {

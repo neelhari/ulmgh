@@ -9,6 +9,7 @@ const { generateOTP, createOTP, verifyOTP } = require('../utils/otp');
 const { authLimiter, loginLimiter } = require('../utils/rateLimiter');
 const { validate, signupSchema, loginSchema, addressSchema, orderSchema } = require('../utils/validation');
 const { OAuth2Client } = require('google-auth-library');
+const fulfillmentService = require('../services/fulfillmentService');
 
 const googleClient = new OAuth2Client();
 
@@ -479,6 +480,20 @@ router.get('/profile', authMiddleware, async (req, res) => {
     const addresses = await pool.query('SELECT * FROM addresses WHERE user_id=$1 ORDER BY is_default DESC', [req.user.id]);
     const orders = await pool.query('SELECT * FROM orders WHERE user_id=$1 ORDER BY created_at DESC', [req.user.id]);
 
+    for (const ord of orders.rows) {
+      const fulRes = await pool.query(
+        `SELECT f.id, f.fulfillment_number, f.status, f.subtotal, f.awb_code, f.courier_name, 
+                f.tracking_url, f.shipped_at, f.delivered_at, f.vendor_id,
+                v.name as vendor_name
+         FROM order_fulfillments f
+         LEFT JOIN vendors v ON f.vendor_id = v.id
+         WHERE f.order_id = $1
+         ORDER BY f.id ASC`,
+        [ord.id]
+      );
+      ord.fulfillments = fulRes.rows;
+    }
+
     res.json({ user: user.rows[0], addresses: addresses.rows, orders: orders.rows });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -631,6 +646,9 @@ router.post('/orders', authMiddleware, validate(orderSchema), async (req, res) =
           [vid, 'credit', data.total, orderNumber, `Order ${orderNumber} - ${data.items.length} item(s)`]
         );
       }
+
+      // Phase 3: Atomically create vendor fulfillments
+      await fulfillmentService.createFulfillmentsForOrder(result.rows[0], verifiedItems, client);
 
       await client.query('COMMIT');
     } catch (txErr) {

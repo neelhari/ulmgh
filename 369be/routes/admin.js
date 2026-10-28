@@ -1,6 +1,8 @@
 const router = require('express').Router();
 const pool = require('../db');
 const { authMiddleware } = require('./auth');
+const { syncVendorPickupWithShiprocket } = require('../services/vendorPickupService');
+const fulfillmentService = require('../services/fulfillmentService');
 
 function adminOnly(req, res, next) {
   if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin access only' });
@@ -55,7 +57,22 @@ router.get('/orders', authMiddleware, adminOnly, async (req, res) => {
        FROM orders o LEFT JOIN users u ON o.user_id = u.id
        ORDER BY o.created_at DESC`
     );
+
+    for (const ord of result.rows) {
+      ord.fulfillments = await fulfillmentService.getFulfillmentsForOrder(ord.id);
+    }
+
     res.json({ orders: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/orders/:id/fulfillments
+router.get('/orders/:id/fulfillments', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const fulfillments = await fulfillmentService.getFulfillmentsForOrder(req.params.id);
+    res.json({ fulfillments });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -118,84 +135,31 @@ router.put('/orders/:id/status', authMiddleware, adminOnly, async (req, res) => 
 
 const shiprocket = require('../utils/shiprocket');
 
-// POST /api/admin/orders/:id/ship
-router.post('/orders/:id/ship', authMiddleware, adminOnly, async (req, res) => {
+// POST /api/admin/fulfillments/:id/ship
+router.post('/fulfillments/:id/ship', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const orderRes = await pool.query('SELECT * FROM orders WHERE id=$1', [req.params.id]);
-    const order = orderRes.rows[0];
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-
-    let items = [];
-    try { items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []); } catch(e) {}
-    
-    let address = {};
-    try { address = typeof order.address === 'string' ? JSON.parse(order.address) : (order.address || {}); } catch(e) {}
-
-    const orderItems = items.map(item => ({
-      name: item.product?.name || 'Product',
-      sku: item.variant?.size || 'Default',
-      units: item.qty || 1,
-      selling_price: item.variant?.price || item.product?.price || 0,
-    }));
-
-    // Read package weight from products if present, else fallback to 0.5 kg
-    let totalWeight = 0;
-    for (const item of items) {
-      const w = parseFloat(item.product?.weight || item.product?.custom_attributes?.weight || item.weight || 0);
-      const qty = item.qty || 1;
-      if (w > 0) {
-        totalWeight += w * qty;
-      }
-    }
-    // Convert grams to kg if value > 50
-    if (totalWeight > 50) {
-      totalWeight = totalWeight / 1000;
-    }
-    const packageWeight = totalWeight > 0 ? parseFloat(totalWeight.toFixed(2)) : 0.5;
-
-    const shiprocketPayload = {
-      order_id: order.order_number || order.id.toString(),
-      order_date: new Date(order.created_at).toISOString().split('T')[0],
-      pickup_location: process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary',
-      billing_customer_name: address.name || 'Customer',
-      billing_last_name: '',
-      billing_address: address.line1 || 'No Address',
-      billing_city: address.city || 'City',
-      billing_pincode: address.pincode || '110001',
-      billing_state: address.state || 'State',
-      billing_country: 'India',
-      billing_email: order.user_email || 'test@test.com',
-      billing_phone: order.user_phone || address.mobile || '9999999999',
-      shipping_is_billing: true,
-      order_items: orderItems,
-      payment_method: order.payment_method === 'cod' ? 'COD' : 'Prepaid',
-      sub_total: order.payment_method === 'cod' ? (order.total - (order.advance_paid || 0)) : order.total,
-      length: 10,
-      breadth: 10,
-      height: 10,
-      weight: packageWeight
-    };
-
-    // 1. Create Custom Order in Shiprocket
-    const srOrder = await shiprocket.createCustomOrder(shiprocketPayload);
-    const shipmentId = srOrder.shipment_id || srOrder.payload?.shipment_id;
-    if (!shipmentId) throw new Error('Shiprocket did not return a shipment_id');
-
-    // 2. Generate AWB
-    const awbRes = await shiprocket.assignAWB(shipmentId);
-    const awbCode = awbRes.response?.data?.awb_code || awbRes.awb_code;
-
-    // 3. Save to database
-    await pool.query(
-      'UPDATE orders SET tracking_id=$1, tracking_link=$2, status=$3 WHERE id=$4',
-      [awbCode, `https://shiprocket.co/tracking/${awbCode}`, 'shipped', req.params.id]
-    );
-
-    res.json({ awb: awbCode, tracking_link: `https://shiprocket.co/tracking/${awbCode}` });
+    const result = await fulfillmentService.shipFulfillment(req.params.id);
+    res.json(result);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
+});
+
+// POST /api/admin/fulfillments/:id/retry
+router.post('/fulfillments/:id/retry', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const result = await fulfillmentService.shipFulfillment(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/orders/:id/ship [DEPRECATED in Phase 3 - Disabled to prevent duplicate whole-order shipping]
+router.post('/orders/:id/ship', authMiddleware, adminOnly, async (req, res) => {
+  return res.status(409).json({
+    error: 'Whole-order shipping is disabled in Phase 3. Please dispatch individual vendor packages using POST /api/admin/fulfillments/:id/ship.'
+  });
 });
 
 // --- Products ---
@@ -404,7 +368,14 @@ router.delete('/categories/:id', authMiddleware, adminOnly, async (req, res) => 
 // --- VENDORS ---
 router.get('/vendors', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, store_name, email, phone, address, status, wallet_balance, created_at FROM vendors ORDER BY created_at DESC');
+    const result = await pool.query(`
+      SELECT id, name, store_name, email, phone, address, status, wallet_balance, created_at,
+             pickup_contact_name, pickup_phone, pickup_line1, pickup_line2,
+             pickup_city, pickup_state, pickup_pincode, shiprocket_pickup_nickname,
+             is_pickup_synced, shiprocket_pickup_id, pickup_synced_at, pickup_sync_error, pickup_version
+      FROM vendors 
+      ORDER BY created_at DESC
+    `);
     res.json({ vendors: result.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -415,12 +386,40 @@ router.put('/vendors/:id/status', authMiddleware, adminOnly, async (req, res) =>
   const { status, gender } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE vendors SET status=$1 WHERE id=$2 RETURNING id, name, store_name, email, status',
+      'UPDATE vendors SET status=$1 WHERE id=$2 RETURNING *',
       [status, req.params.id]
     );
-    res.json({ vendor: result.rows[0] });
+    const updatedVendor = result.rows[0];
+
+    // If status became 'approved', attempt to sync pickup location with Shiprocket if fields exist
+    let syncResult = null;
+    if (status === 'approved' && updatedVendor.pickup_line1 && updatedVendor.pickup_pincode) {
+      try {
+        syncResult = await syncVendorPickupWithShiprocket(req.params.id);
+      } catch (syncErr) {
+        console.warn(`Vendor ${req.params.id} approved, but automatic Shiprocket pickup sync failed:`, syncErr.message);
+      }
+    }
+
+    res.json({ vendor: updatedVendor, syncResult });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/vendors/:id/sync-pickup
+router.post('/vendors/:id/sync-pickup', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const syncResult = await syncVendorPickupWithShiprocket(req.params.id);
+    const vendorRes = await pool.query('SELECT * FROM vendors WHERE id = $1', [req.params.id]);
+    res.json({
+      message: syncResult.message || 'Pickup location synchronized with Shiprocket successfully.',
+      vendor: vendorRes.rows[0],
+      syncResult
+    });
+  } catch (err) {
+    console.error(`Admin Shiprocket sync failed for vendor ${req.params.id}:`, err.message);
+    res.status(400).json({ error: err.message });
   }
 });
 

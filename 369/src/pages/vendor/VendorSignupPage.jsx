@@ -1,9 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, User, Phone, Store, ArrowRight, ShieldCheck, CheckCircle2, CreditCard, PlayCircle, X, FileText, ExternalLink } from 'lucide-react';
+import { Mail, Lock, User, Phone, Store, MapPin, ArrowRight, ShieldCheck, CheckCircle2, CreditCard, PlayCircle, X, FileText, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import logo from '../../assets/logo.png';
+
+const INDIAN_STATES = [
+  'Andaman and Nicobar Islands',
+  'Andhra Pradesh',
+  'Arunachal Pradesh',
+  'Assam',
+  'Bihar',
+  'Chandigarh',
+  'Chhattisgarh',
+  'Dadra and Nagar Haveli and Daman and Diu',
+  'Delhi',
+  'Goa',
+  'Gujarat',
+  'Haryana',
+  'Himachal Pradesh',
+  'Jammu and Kashmir',
+  'Jharkhand',
+  'Karnataka',
+  'Kerala',
+  'Ladakh',
+  'Lakshadweep',
+  'Madhya Pradesh',
+  'Maharashtra',
+  'Manipur',
+  'Meghalaya',
+  'Mizoram',
+  'Nagaland',
+  'Odisha',
+  'Puducherry',
+  'Punjab',
+  'Rajasthan',
+  'Sikkim',
+  'Tamil Nadu',
+  'Telangana',
+  'Tripura',
+  'Uttar Pradesh',
+  'Uttarakhand',
+  'West Bengal'
+];
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
 
@@ -41,7 +80,13 @@ export function VendorSignupPage() {
 
   const [formData, setFormData] = useState({
     firstName: '', lastName: '', email: '', phone: '',
-    password: '', storeName: '', storeAddress: '', otp: ''
+    password: '', storeName: '',
+    pickupContactName: '', pickupPhone: '',
+    pickupLine1: '', pickupLine2: '',
+    pickupCity: '', pickupState: 'Telangana',
+    pickupPincode: '',
+    sameAsOwner: true,
+    otp: ''
   });
 
   useEffect(() => {
@@ -102,9 +147,47 @@ export function VendorSignupPage() {
     e.preventDefault();
     setError('');
 
-    if (step === 1) return setStep(2);
+    if (step === 1) {
+      if (!formData.firstName.trim() || !formData.email.trim() || !formData.phone.trim() || !formData.password) {
+        return setError('Please fill in all personal details.');
+      }
+      if (formData.sameAsOwner) {
+        setFormData(prev => ({
+          ...prev,
+          pickupContactName: `${prev.firstName} ${prev.lastName}`.trim(),
+          pickupPhone: prev.phone,
+        }));
+      }
+      return setStep(2);
+    }
 
-    if (step === 2) return setStep(3);
+    if (step === 2) {
+      if (!formData.storeName.trim()) {
+        return setError('Store Name is required.');
+      }
+      const contact = formData.pickupContactName.trim() || `${formData.firstName} ${formData.lastName}`.trim();
+      if (contact.length < 2) {
+        return setError('Pickup Contact Name must be at least 2 characters.');
+      }
+      const rawPhone = (formData.pickupPhone || formData.phone).replace(/\D/g, '').slice(-10);
+      if (!/^[6-9]\d{9}$/.test(rawPhone)) {
+        return setError('Valid 10-digit Indian mobile number required for pickup contact.');
+      }
+      if (!formData.pickupLine1.trim() || formData.pickupLine1.trim().length < 5) {
+        return setError('Address Line 1 is required (minimum 5 characters).');
+      }
+      if (!formData.pickupCity.trim()) {
+        return setError('City is required.');
+      }
+      if (!formData.pickupState.trim()) {
+        return setError('State is required.');
+      }
+      const rawPin = formData.pickupPincode.trim();
+      if (!/^[1-9][0-9]{5}$/.test(rawPin)) {
+        return setError('Valid 6-digit Indian Pincode is required.');
+      }
+      return setStep(3);
+    }
 
     if (step === 3) {
       if (!acceptedGuidelines) return setError('You must accept the Vendor Guidelines to continue.');
@@ -112,11 +195,24 @@ export function VendorSignupPage() {
       // Submit signup + send OTP
       setLoading(true);
       try {
+        const contactName = formData.pickupContactName.trim() || `${formData.firstName} ${formData.lastName}`.trim();
+        const contactPhone = (formData.pickupPhone || formData.phone).replace(/\D/g, '').slice(-10);
+        const derivedAddress = `${formData.pickupLine1.trim()}${formData.pickupLine2 ? ', ' + formData.pickupLine2.trim() : ''}, ${formData.pickupCity.trim()}, ${formData.pickupState.trim()} - ${formData.pickupPincode.trim()}`;
+
         const payload = {
           name: `${formData.firstName} ${formData.lastName}`.trim(),
-          email: formData.email, phone: formData.phone,
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
           password: formData.password,
-          store_name: formData.storeName, address: formData.storeAddress,
+          store_name: formData.storeName.trim(),
+          pickup_contact_name: contactName,
+          pickup_phone: contactPhone,
+          pickup_line1: formData.pickupLine1.trim(),
+          pickup_line2: formData.pickupLine2.trim() || null,
+          pickup_city: formData.pickupCity.trim(),
+          pickup_state: formData.pickupState.trim(),
+          pickup_pincode: formData.pickupPincode.trim(),
+          address: derivedAddress,
           plan_id: selectedPlan.id,
           payment_id: razorpayData.payment_id || paymentId,
           razorpay_order_id: razorpayData.order_id,
@@ -245,7 +341,7 @@ export function VendorSignupPage() {
               </div>
             )}
 
-            {/* Step 2 — Store */}
+            {/* Step 2 — Store & Pickup Warehouse */}
             {step === 2 && (
               <div className="space-y-4">
                 <div>
@@ -253,15 +349,139 @@ export function VendorSignupPage() {
                   <div className="relative">
                     <Store className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <input type="text" name="storeName" value={formData.storeName} onChange={handleChange} required
-                      className="block w-full pl-12 pr-4 py-3.5 bg-gray-50/50 border border-gray-200 rounded-[16px] text-gray-900 focus:bg-white focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603] transition-all shadow-inner"
-                      placeholder="My Awesome Store" />
+                      className="block w-full pl-12 pr-4 py-3 bg-gray-50/50 border border-gray-200 rounded-[14px] text-gray-900 focus:bg-white focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603] transition-all shadow-inner text-sm"
+                      placeholder="My Store Name" />
                   </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Store Address</label>
-                  <textarea name="storeAddress" value={formData.storeAddress} onChange={handleChange} required rows={3}
-                    className="block w-full p-4 bg-gray-50/50 border border-gray-200 rounded-[16px] text-gray-900 focus:bg-white focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603] transition-all shadow-inner resize-none"
-                    placeholder="Enter complete business address" />
+
+                <div className="pt-2 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                        <MapPin className="w-4 h-4 text-[#fe6603]" />
+                        Pickup & Warehouse Address
+                      </h3>
+                      <p className="text-xs text-gray-500">Logistics partners will pick up customer orders from this location.</p>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 p-2.5 mb-3 bg-orange-50/60 border border-orange-100 rounded-xl cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.sameAsOwner}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFormData(prev => ({
+                          ...prev,
+                          sameAsOwner: checked,
+                          pickupContactName: checked ? `${prev.firstName} ${prev.lastName}`.trim() : prev.pickupContactName,
+                          pickupPhone: checked ? prev.phone : prev.pickupPhone,
+                        }));
+                      }}
+                      className="rounded text-[#fe6603] focus:ring-[#fe6603] h-4 w-4"
+                    />
+                    <span className="text-xs font-semibold text-gray-700">Pickup contact same as Store Owner ({formData.firstName} {formData.lastName})</span>
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Contact Person Name</label>
+                      <input
+                        type="text"
+                        name="pickupContactName"
+                        value={formData.pickupContactName}
+                        onChange={handleChange}
+                        required
+                        className="block w-full px-3.5 py-2.5 bg-gray-50/50 border border-gray-200 rounded-[12px] text-gray-900 text-sm focus:bg-white focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603]"
+                        placeholder="Warehouse Manager Name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Pickup Mobile Number (10 Digits)</label>
+                      <input
+                        type="tel"
+                        name="pickupPhone"
+                        maxLength={10}
+                        value={formData.pickupPhone}
+                        onChange={(e) => setFormData(prev => ({ ...prev, pickupPhone: e.target.value.replace(/\D/g, '') }))}
+                        required
+                        className="block w-full px-3.5 py-2.5 bg-gray-50/50 border border-gray-200 rounded-[12px] text-gray-900 text-sm focus:bg-white focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603]"
+                        placeholder="9876543210"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Address Line 1 (Flat, Bldg, Street, Area) *</label>
+                      <input
+                        type="text"
+                        name="pickupLine1"
+                        value={formData.pickupLine1}
+                        onChange={handleChange}
+                        required
+                        className="block w-full px-3.5 py-2.5 bg-gray-50/50 border border-gray-200 rounded-[12px] text-gray-900 text-sm focus:bg-white focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603]"
+                        placeholder="1-1-738, Vinayaka Temple Road"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Address Line 2 (Landmark, Suite, Unit) - Optional</label>
+                      <input
+                        type="text"
+                        name="pickupLine2"
+                        value={formData.pickupLine2}
+                        onChange={handleChange}
+                        className="block w-full px-3.5 py-2.5 bg-gray-50/50 border border-gray-200 rounded-[12px] text-gray-900 text-sm focus:bg-white focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603]"
+                        placeholder="Near Bus Stand"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Pincode (6 Digits) *</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          name="pickupPincode"
+                          value={formData.pickupPincode}
+                          onChange={(e) => setFormData(prev => ({ ...prev, pickupPincode: e.target.value.replace(/\D/g, '') }))}
+                          required
+                          className="block w-full px-3.5 py-2.5 bg-gray-50/50 border border-gray-200 rounded-[12px] text-gray-900 text-sm focus:bg-white focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603]"
+                          placeholder="505325"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">City *</label>
+                        <input
+                          type="text"
+                          name="pickupCity"
+                          value={formData.pickupCity}
+                          onChange={handleChange}
+                          required
+                          className="block w-full px-3.5 py-2.5 bg-gray-50/50 border border-gray-200 rounded-[12px] text-gray-900 text-sm focus:bg-white focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603]"
+                          placeholder="Koratla"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">State *</label>
+                        <select
+                          name="pickupState"
+                          value={formData.pickupState}
+                          onChange={handleChange}
+                          required
+                          className="block w-full px-3.5 py-2.5 bg-gray-50/50 border border-gray-200 rounded-[12px] text-gray-900 text-sm focus:bg-white focus:ring-2 focus:ring-[#fe6603]/30 focus:border-[#fe6603]"
+                        >
+                          {INDIAN_STATES.map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

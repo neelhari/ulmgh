@@ -29,6 +29,22 @@ async function setup() {
       created_at TIMESTAMP DEFAULT NOW()
     );
 
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_contact_name VARCHAR(150);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_phone VARCHAR(20);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_line1 TEXT;
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_line2 TEXT;
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_city VARCHAR(100);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_state VARCHAR(100);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_pincode VARCHAR(10);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS shiprocket_pickup_nickname VARCHAR(50);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS is_pickup_synced BOOLEAN DEFAULT FALSE;
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS shiprocket_pickup_id VARCHAR(50);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_synced_at TIMESTAMP;
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_sync_error TEXT;
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_address_hash VARCHAR(64);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_version INTEGER DEFAULT 1;
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS historical_shiprocket_pickups JSONB DEFAULT '[]'::jsonb;
+
     CREATE TABLE IF NOT EXISTS otps (
       id SERIAL PRIMARY KEY,
       email VARCHAR(150) NOT NULL,
@@ -167,6 +183,55 @@ async function setup() {
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       used_at TIMESTAMP DEFAULT NOW(),
       UNIQUE(offer_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS order_fulfillments (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+      fulfillment_number VARCHAR(64) UNIQUE NOT NULL,
+      status VARCHAR(50) DEFAULT 'pending',
+      subtotal NUMERIC(10,2) NOT NULL DEFAULT 0,
+      shipping_fee NUMERIC(10,2) NOT NULL DEFAULT 0,
+      tax_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+      total_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+      package_weight NUMERIC(8,2) DEFAULT 0.5,
+      package_length NUMERIC(8,2) DEFAULT 10,
+      package_breadth NUMERIC(8,2) DEFAULT 10,
+      package_height NUMERIC(8,2) DEFAULT 10,
+      pickup_location_nickname VARCHAR(60),
+      shiprocket_pickup_id VARCHAR(50),
+      shiprocket_order_id BIGINT,
+      shiprocket_shipment_id BIGINT,
+      awb_code VARCHAR(100),
+      courier_name VARCHAR(100),
+      courier_company_id INTEGER,
+      tracking_url TEXT,
+      label_url TEXT,
+      manifest_url TEXT,
+      pickup_token_number VARCHAR(100),
+      pickup_scheduled_date TIMESTAMPTZ,
+      shipped_at TIMESTAMPTZ,
+      delivered_at TIMESTAMPTZ,
+      cancellation_reason TEXT,
+      sync_error TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS order_fulfillment_items (
+      id SERIAL PRIMARY KEY,
+      fulfillment_id INTEGER NOT NULL REFERENCES order_fulfillments(id) ON DELETE CASCADE,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+      product_name VARCHAR(255) NOT NULL,
+      sku VARCHAR(100),
+      variant_details JSONB DEFAULT '{}'::jsonb,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      unit_price NUMERIC(10,2) NOT NULL,
+      total_price NUMERIC(10,2) NOT NULL,
+      weight NUMERIC(8,2) DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `);
   console.log('✅ Tables created');

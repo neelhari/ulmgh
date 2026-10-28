@@ -125,9 +125,31 @@ export function AdminVendorRequestsPage() {
                   <Phone className="w-4 h-4 text-gray-400" />
                   <span>{request.phone}</span>
                 </div>
-                <div className="flex items-start gap-2 text-sm text-gray-600">
-                  <MapPin className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
-                  <span>{request.address}</span>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between text-gray-500 font-semibold mb-1">
+                    <span className="flex items-center gap-1 text-[#fe6603]"><MapPin className="w-3.5 h-3.5" /> Dispatch Warehouse</span>
+                    {request.pickup_pincode ? (
+                      <span className="px-2 py-0.5 bg-orange-100 text-[#fe6603] rounded font-bold text-[11px]">{request.pickup_pincode}</span>
+                    ) : (
+                      <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded text-[10px]">Unstructured</span>
+                    )}
+                  </div>
+                  {request.pickup_line1 ? (
+                    <div className="text-gray-800 leading-relaxed">
+                      <p className="font-medium">{request.pickup_line1}{request.pickup_line2 ? `, ${request.pickup_line2}` : ''}</p>
+                      <p className="text-gray-600">{request.pickup_city}, {request.pickup_state}</p>
+                      <p className="text-gray-500 text-[11px] mt-1 pt-1 border-t border-gray-200/60">
+                        Contact: <span className="font-semibold text-gray-700">{request.pickup_contact_name || request.name}</span> &middot; {request.pickup_phone || request.phone}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-gray-700">{request.address || 'No address provided'}</p>
+                  )}
+                  {request.shiprocket_pickup_nickname && (
+                    <p className="text-[10px] text-gray-400 font-mono mt-1">
+                      SR ID: {request.shiprocket_pickup_nickname}
+                    </p>
+                  )}
                 </div>
               </div>
 

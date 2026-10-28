@@ -12,6 +12,11 @@ const transporter = nodemailer.createTransport({
 const { generateOTP, createOTP, verifyOTP } = require('../utils/otp');
 const { authLimiter } = require('../utils/rateLimiter');
 const { verifyRazorpayPayment } = require('../utils/razorpay');
+const {
+  validatePickupAddress,
+  generateShiprocketNickname,
+  formatFullAddress,
+} = require('../utils/pickupValidation');
 
 async function sendOTPEmail(email, otp, name) {
   await transporter.sendMail({
@@ -53,7 +58,11 @@ async function sendVendorPasswordResetOTPEmail(email, otp, name) {
 
 // Registration
 router.post('/signup', authLimiter, async (req, res) => {
-  const { name, store_name, email, phone, password, address, plan_id, payment_id, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+  const {
+    name, store_name, email, phone, password, address,
+    pickup_contact_name, pickup_phone, pickup_line1, pickup_line2, pickup_city, pickup_state, pickup_pincode,
+    plan_id, payment_id, razorpay_order_id, razorpay_payment_id, razorpay_signature
+  } = req.body;
   const payId = razorpay_payment_id || payment_id;
   const orderId = razorpay_order_id;
   const signature = razorpay_signature;
@@ -62,6 +71,26 @@ router.post('/signup', authLimiter, async (req, res) => {
   if (!plan_id || !payId || !orderId || !signature) {
     return res.status(400).json({ error: 'Subscription payment verification details required (plan_id, razorpay_order_id, razorpay_payment_id, razorpay_signature)' });
   }
+
+  // Validate structured pickup address if provided
+  let structuredPickup = null;
+  if (pickup_line1 || pickup_city || pickup_pincode) {
+    const val = validatePickupAddress({
+      pickup_contact_name: pickup_contact_name || name,
+      pickup_phone: pickup_phone || phone,
+      pickup_line1,
+      pickup_line2,
+      pickup_city,
+      pickup_state,
+      pickup_pincode,
+    });
+    if (!val.isValid) {
+      return res.status(400).json({ error: val.error });
+    }
+    structuredPickup = val.sanitized;
+  }
+
+  const finalAddress = address || (structuredPickup ? formatFullAddress(structuredPickup) : '');
 
   try {
     // 1. Verify plan exists
@@ -89,39 +118,56 @@ router.post('/signup', authLimiter, async (req, res) => {
     const password_hash = await bcrypt.hash(password, 10);
     const otp = generateOTP();
 
+    let vendorId;
     if (check.rows.length > 0) {
-      try {
-        await pool.query(
-          'UPDATE vendors SET name=$1, store_name=$2, phone=$3, password_hash=$4, address=$5, pending_plan_id=$6, pending_payment_id=$7, pending_order_id=$8 WHERE email=$9',
-          [name, store_name, phone, password_hash, address, plan_id, payId, orderId, email]
-        );
-      } catch (err) {
-        if (err.code === '42703') { // pending_order_id doesn't exist yet before migration
-          await pool.query(
-            'UPDATE vendors SET name=$1, store_name=$2, phone=$3, password_hash=$4, address=$5, pending_plan_id=$6, pending_payment_id=$7 WHERE email=$8',
-            [name, store_name, phone, password_hash, address, plan_id, payId, email]
-          );
-        } else {
-          throw err;
-        }
-      }
+      vendorId = check.rows[0].id;
+      const srNickname = structuredPickup ? generateShiprocketNickname(vendorId, structuredPickup.pickup_pincode) : null;
+      await pool.query(
+        `UPDATE vendors 
+         SET name=$1, store_name=$2, phone=$3, password_hash=$4, address=$5,
+             pending_plan_id=$6, pending_payment_id=$7, pending_order_id=$8,
+             pickup_contact_name=$9, pickup_phone=$10, pickup_line1=$11, pickup_line2=$12,
+             pickup_city=$13, pickup_state=$14, pickup_pincode=$15, shiprocket_pickup_nickname=COALESCE($16, shiprocket_pickup_nickname)
+         WHERE email=$17`,
+        [
+          name, store_name, phone, password_hash, finalAddress,
+          plan_id, payId, orderId,
+          structuredPickup?.pickup_contact_name || null,
+          structuredPickup?.pickup_phone || null,
+          structuredPickup?.pickup_line1 || null,
+          structuredPickup?.pickup_line2 || null,
+          structuredPickup?.pickup_city || null,
+          structuredPickup?.pickup_state || null,
+          structuredPickup?.pickup_pincode || null,
+          srNickname,
+          email
+        ]
+      );
     } else {
-      try {
-        await pool.query(
-          `INSERT INTO vendors (name, store_name, email, phone, password_hash, address, status, pending_plan_id, pending_payment_id, pending_order_id)
-           VALUES ($1, $2, $3, $4, $5, $6, 'unverified', $7, $8, $9)`,
-          [name, store_name, email, phone, password_hash, address, plan_id, payId, orderId]
-        );
-      } catch (err) {
-        if (err.code === '42703') { // pending_order_id doesn't exist yet before migration
-          await pool.query(
-            `INSERT INTO vendors (name, store_name, email, phone, password_hash, address, status, pending_plan_id, pending_payment_id)
-             VALUES ($1, $2, $3, $4, $5, $6, 'unverified', $7, $8)`,
-            [name, store_name, email, phone, password_hash, address, plan_id, payId]
-          );
-        } else {
-          throw err;
-        }
+      const insRes = await pool.query(
+        `INSERT INTO vendors (
+          name, store_name, email, phone, password_hash, address, status,
+          pending_plan_id, pending_payment_id, pending_order_id,
+          pickup_contact_name, pickup_phone, pickup_line1, pickup_line2,
+          pickup_city, pickup_state, pickup_pincode
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'unverified', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        RETURNING id`,
+        [
+          name, store_name, email, phone, password_hash, finalAddress,
+          plan_id, payId, orderId,
+          structuredPickup?.pickup_contact_name || null,
+          structuredPickup?.pickup_phone || null,
+          structuredPickup?.pickup_line1 || null,
+          structuredPickup?.pickup_line2 || null,
+          structuredPickup?.pickup_city || null,
+          structuredPickup?.pickup_state || null,
+          structuredPickup?.pickup_pincode || null
+        ]
+      );
+      vendorId = insRes.rows[0].id;
+      if (structuredPickup) {
+        const srNickname = generateShiprocketNickname(vendorId, structuredPickup.pickup_pincode);
+        await pool.query('UPDATE vendors SET shiprocket_pickup_nickname=$1 WHERE id=$2', [srNickname, vendorId]);
       }
     }
 
@@ -271,6 +317,9 @@ router.get('/me', vendorAuthMiddleware, async (req, res) => {
     const result = await pool.query(
       `SELECT v.id, v.name, v.store_name, v.email, v.phone, v.address, v.status,
               v.wallet_balance, v.subscription_expires_at, v.created_at,
+              v.pickup_contact_name, v.pickup_phone, v.pickup_line1, v.pickup_line2,
+              v.pickup_city, v.pickup_state, v.pickup_pincode, v.shiprocket_pickup_nickname,
+              v.is_pickup_synced, v.shiprocket_pickup_id, v.pickup_synced_at, v.pickup_sync_error, v.pickup_version,
               vs.plan_name, vs.months, vs.amount, vs.expires_at as sub_expires_at, vs.features as sub_features
        FROM vendors v
        LEFT JOIN LATERAL (
