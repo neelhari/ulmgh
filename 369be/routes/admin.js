@@ -206,14 +206,28 @@ router.post('/orders/:id/ship', authMiddleware, adminOnly, async (req, res) => {
 // GET /api/admin/warehouse-settings - Fetch registered Shiprocket warehouses and current admin selection
 router.get('/warehouse-settings', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const locations = await shiprocket.getPickupLocations();
-
+    // 1. Read the saved setting from database independently of Shiprocket API
     let selectedNickname = 'suresh';
-    const settingRes = await pool.query("SELECT value FROM app_settings WHERE key = 'admin_pickup_nickname' LIMIT 1");
-    if (settingRes.rows.length > 0 && settingRes.rows[0].value) {
-      selectedNickname = settingRes.rows[0].value;
+    try {
+      const settingRes = await pool.query("SELECT value FROM app_settings WHERE key = 'admin_pickup_nickname' LIMIT 1");
+      if (settingRes.rows.length > 0 && settingRes.rows[0].value) {
+        selectedNickname = settingRes.rows[0].value;
+      }
+    } catch (dbErr) {
+      console.warn('Could not read admin_pickup_nickname from app_settings:', dbErr.message);
     }
 
+    // 2. Fetch live Shiprocket pickup locations with graceful error handling
+    let locations = [];
+    let warning = null;
+    try {
+      locations = await shiprocket.getPickupLocations();
+    } catch (srErr) {
+      console.warn('Live Shiprocket pickup locations unavailable:', srErr.message);
+      warning = `Live warehouse locations could not be loaded from Shiprocket: ${srErr.message}`;
+    }
+
+    // 3. Do not mark as verified active warehouse unless it matches a real registered Shiprocket location
     const activeWarehouse = (locations || []).find(l => {
       const nick = (l.pickup_location || l.pickup_location_nickname || l.nickname || '').toLowerCase();
       return nick === selectedNickname.toLowerCase();
@@ -222,7 +236,8 @@ router.get('/warehouse-settings', authMiddleware, adminOnly, async (req, res) =>
     res.json({
       selected_nickname: selectedNickname,
       locations: locations || [],
-      active_warehouse: activeWarehouse
+      active_warehouse: activeWarehouse,
+      warning: warning
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -8,6 +8,7 @@ export function AdminWarehousePage() {
   const [locations, setLocations] = useState([]);
   const [selectedNickname, setSelectedNickname] = useState('suresh');
   const [activeWarehouse, setActiveWarehouse] = useState(null);
+  const [warning, setWarning] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -23,6 +24,7 @@ export function AdminWarehousePage() {
         setLocations(data.locations || []);
         setSelectedNickname(data.selected_nickname || 'suresh');
         setActiveWarehouse(data.active_warehouse || null);
+        setWarning(data.warning || null);
       } else {
         toast.error(data.error || 'Failed to load warehouse settings');
       }
@@ -108,6 +110,17 @@ export function AdminWarehousePage() {
         </div>
       </div>
 
+      {/* Warning Banner when Shiprocket is unavailable */}
+      {warning && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-3 shadow-xs">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold text-amber-950">Shiprocket Synchronization Notice</p>
+            <p className="text-amber-800 leading-relaxed">{warning}</p>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="p-12 text-center">
           <div className="w-8 h-8 border-4 border-[#036e26]/20 border-t-[#036e26] rounded-full animate-spin mx-auto" />
@@ -160,7 +173,8 @@ export function AdminWarehousePage() {
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>
-                  Current default nickname is <strong>"{selectedNickname}"</strong>. Please verify that this nickname matches one of your active Shiprocket locations below.
+                  Current default nickname is <strong>"{selectedNickname}"</strong> (from database). 
+                  {warning ? ' Live verification with Shiprocket is currently unavailable.' : ' Please verify that this nickname matches one of your active Shiprocket locations below.'}
                 </span>
               </div>
             )}

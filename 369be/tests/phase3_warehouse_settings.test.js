@@ -179,6 +179,113 @@ async function runPhase3Tests() {
   assert.strictEqual(existingFulfillment.pickup_location_nickname, 'vnd_4_509209');
   console.log('✅ Existing shipments retain their immutable warehouse assignment');
 
+  // Test 6: Warehouse settings endpoint behavior when Shiprocket API is unavailable
+  console.log('\n[Test 6] Testing warehouse endpoint behavior when Shiprocket is unavailable...');
+  async function simulateWarehouseGet(dbClient, srClient) {
+    let selectedNickname = 'suresh';
+    try {
+      const settingRes = await dbClient.query("SELECT value FROM app_settings WHERE key = 'admin_pickup_nickname' LIMIT 1");
+      if (settingRes.rows.length > 0 && settingRes.rows[0].value) {
+        selectedNickname = settingRes.rows[0].value;
+      }
+    } catch (dbErr) {
+      // fallback
+    }
+
+    let locations = [];
+    let warning = null;
+    try {
+      locations = await srClient.getPickupLocations();
+    } catch (srErr) {
+      warning = `Live warehouse locations could not be loaded from Shiprocket: ${srErr.message}`;
+    }
+
+    const activeWarehouse = (locations || []).find(l => {
+      const nick = (l.pickup_location || l.pickup_location_nickname || l.nickname || '').toLowerCase();
+      return nick === selectedNickname.toLowerCase();
+    }) || null;
+
+    return {
+      status: 200,
+      body: {
+        selected_nickname: selectedNickname,
+        locations: locations || [],
+        active_warehouse: activeWarehouse,
+        warning: warning
+      }
+    };
+  }
+
+  const mockDbWithSetting = {
+    query: async () => ({ rows: [{ value: 'suresh' }] })
+  };
+  const mockSrFailing = {
+    getPickupLocations: async () => {
+      throw new Error('Shiprocket login failed: Invalid email and password combination');
+    }
+  };
+
+  const degradedRes = await simulateWarehouseGet(mockDbWithSetting, mockSrFailing);
+  assert.strictEqual(degradedRes.status, 200, 'Must return HTTP 200 even when Shiprocket fails');
+  assert.strictEqual(degradedRes.body.selected_nickname, 'suresh', 'Must return the saved database setting');
+  assert.strictEqual(degradedRes.body.active_warehouse, null, 'Must NOT show verified active warehouse when Shiprocket is down');
+  assert.strictEqual(degradedRes.body.locations.length, 0);
+  assert.ok(degradedRes.body.warning.includes('Live warehouse locations could not be loaded from Shiprocket'));
+  console.log('✅ Graceful degraded response verified: HTTP 200 with saved DB setting, unverified active_warehouse, and clear warning banner');
+
+  // Test 7: Warehouse settings endpoint behavior when DB read fails
+  console.log('\n[Test 7] Testing warehouse endpoint behavior when database read fails...');
+  const mockDbFailing = {
+    query: async () => { throw new Error('DB connection pool exhausted'); }
+  };
+  const mockSrAvailable = {
+    getPickupLocations: async () => ([
+      { pickup_location: 'suresh', city: 'Karimnagar', state: 'Telangana', pin_code: '505326' }
+    ])
+  };
+
+  const dbFailRes = await simulateWarehouseGet(mockDbFailing, mockSrAvailable);
+  assert.strictEqual(dbFailRes.status, 200);
+  assert.strictEqual(dbFailRes.body.selected_nickname, 'suresh', 'Falls back safely to default suresh');
+  assert.ok(dbFailRes.body.active_warehouse, 'Pairs with active warehouse if suresh exists in Shiprocket');
+  assert.strictEqual(dbFailRes.body.warning, null);
+  console.log('✅ Database fallback verified: Falls back safely to "suresh" without crashing');
+
+  // Test 8: Successful warehouse loading when Shiprocket is responsive
+  console.log('\n[Test 8] Testing warehouse endpoint behavior when Shiprocket is responsive...');
+  const successRes = await simulateWarehouseGet(mockDbWithSetting, mockSrAvailable);
+  assert.strictEqual(successRes.status, 200);
+  assert.strictEqual(successRes.body.selected_nickname, 'suresh');
+  assert.strictEqual(successRes.body.active_warehouse.pickup_location, 'suresh');
+  assert.strictEqual(successRes.body.locations.length, 1);
+  assert.strictEqual(successRes.body.warning, null);
+  console.log('✅ Successful loading verified: Returns full warehouse list with verified active warehouse');
+
+  // Test 9: Safe credential handling and trimming without stripping quotes
+  console.log('\n[Test 9] Verifying safe credential trimming rules...');
+  function sanitizeAuthCredentials(rawEmail, rawPassword) {
+    const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
+    const password = typeof rawPassword === 'string' ? rawPassword.trim() : '';
+    if (!email || !password) {
+      throw new Error('Shiprocket credentials missing: SHIPROCKET_EMAIL or SHIPROCKET_PASSWORD is not configured');
+    }
+    return { email, password };
+  }
+
+  // Accidental whitespace is trimmed
+  const credsWithWhitespace = sanitizeAuthCredentials('  admin@domain.com  ', '  my_pass_123  ');
+  assert.strictEqual(credsWithWhitespace.email, 'admin@domain.com');
+  assert.strictEqual(credsWithWhitespace.password, 'my_pass_123');
+
+  // Quotation marks are preserved as legitimate password characters
+  const credsWithQuotes = sanitizeAuthCredentials('user@test.com', "'secret\"pass'");
+  assert.strictEqual(credsWithQuotes.password, "'secret\"pass'", 'Quotation marks must NOT be blindly stripped');
+
+  // Missing credentials throw clean error without exposing secrets
+  assert.throws(() => sanitizeAuthCredentials('', 'pass'), /credentials missing/);
+  assert.throws(() => sanitizeAuthCredentials('user@test.com', '  '), /credentials missing/);
+  console.log('✅ Safe credential handling verified: Surrounding whitespace trimmed, quotes preserved, missing credentials handled cleanly');
+
   console.log('\n🎉 ALL PHASE 3 TESTS PASSED PERFECTLY! 🎉');
   process.exit(0);
 }

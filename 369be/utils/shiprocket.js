@@ -2,6 +2,7 @@ const axios = require('axios');
 require('dotenv').config();
 
 const BASE_URL = 'https://apiv2.shiprocket.in/v1/external';
+const DEFAULT_TIMEOUT_MS = 10000; // 10 seconds timeout for serverless reliability
 let cachedToken = null;
 let tokenExpiry = null;
 
@@ -10,10 +11,19 @@ async function authenticate() {
     return cachedToken;
   }
 
+  const email = typeof process.env.SHIPROCKET_EMAIL === 'string' ? process.env.SHIPROCKET_EMAIL.trim() : '';
+  const password = typeof process.env.SHIPROCKET_PASSWORD === 'string' ? process.env.SHIPROCKET_PASSWORD.trim() : '';
+
+  if (!email || !password) {
+    throw new Error('Shiprocket credentials missing: SHIPROCKET_EMAIL or SHIPROCKET_PASSWORD is not configured');
+  }
+
   try {
     const response = await axios.post(`${BASE_URL}/auth/login`, {
-      email: process.env.SHIPROCKET_EMAIL,
-      password: process.env.SHIPROCKET_PASSWORD,
+      email,
+      password,
+    }, {
+      timeout: DEFAULT_TIMEOUT_MS
     });
     
     cachedToken = response.data.token;
@@ -42,7 +52,8 @@ async function createCustomOrder(orderData) {
 
   try {
     const response = await axios.post(`${BASE_URL}/orders/create/adhoc`, payload, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data;
   } catch (error) {
@@ -58,7 +69,8 @@ async function assignAWB(shipmentId) {
     const response = await axios.post(`${BASE_URL}/courier/assign/awb`, {
       shipment_id: shipmentId
     }, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data;
   } catch (error) {
@@ -74,7 +86,8 @@ async function requestPickup(shipmentId) {
     const response = await axios.post(`${BASE_URL}/courier/generate/pickup`, {
       shipment_id: [shipmentId]
     }, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data;
   } catch (error) {
@@ -90,7 +103,8 @@ async function generateLabel(shipmentId) {
     const response = await axios.post(`${BASE_URL}/courier/generate/label`, {
       shipment_id: [shipmentId]
     }, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data;
   } catch (error) {
@@ -104,7 +118,8 @@ async function getPickupLocations() {
 
   try {
     const response = await axios.get(`${BASE_URL}/settings/company/pickup`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data?.data?.shipping_address || [];
   } catch (error) {
@@ -118,7 +133,8 @@ async function registerPickupLocation(pickupData) {
 
   try {
     const response = await axios.post(`${BASE_URL}/settings/company/addpickup`, pickupData, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data;
   } catch (error) {
@@ -136,7 +152,8 @@ async function cancelShipment(awbs) {
     const response = await axios.post(`${BASE_URL}/orders/cancel/shipment/awbs`, {
       awbs: awbList
     }, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data;
   } catch (error) {
@@ -154,7 +171,8 @@ async function cancelOrder(orderIds) {
     const response = await axios.post(`${BASE_URL}/orders/cancel`, {
       ids: idList
     }, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data;
   } catch (error) {
@@ -169,7 +187,8 @@ async function getTrackingByAwb(awbCode) {
 
   try {
     const response = await axios.get(`${BASE_URL}/courier/track/awb/${encodeURIComponent(awbCode)}`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data;
   } catch (error) {
@@ -184,7 +203,8 @@ async function getOrderDetails(orderId) {
 
   try {
     const response = await axios.get(`${BASE_URL}/orders/show/${encodeURIComponent(orderId)}`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data;
   } catch (error) {
