@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ShoppingBag, MessageCircle, ChevronDown, Printer, FileText, PackageSearch } from 'lucide-react';
+import { Search, ShoppingBag, MessageCircle, ChevronDown, Printer, FileText, PackageSearch, RefreshCw, Truck, XCircle, ExternalLink, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
@@ -26,6 +26,9 @@ export function VendorOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [expanded, setExpanded] = useState(null);
+  const [dispatchingId, setDispatchingId] = useState(null);
+  const [cancellingId, setCancellingId] = useState(null);
+  const [syncingId, setSyncingId] = useState(null);
 
   const fetchOrders = async () => {
     try {
@@ -39,6 +42,92 @@ export function VendorOrdersPage() {
       toast.error('Failed to load orders');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVendorDispatch = async (order) => {
+    const fulId = order.fulfillment_id || order.id;
+    const warehouse = order.pickup_location_nickname || 'your registered warehouse';
+    const confirmed = window.confirm(
+      `Confirm Dispatch for Package #${order.fulfillment_number || fulId}?\n\nCourier pickup will be arranged from ${warehouse}.\nPlease ensure items are packed and ready.`
+    );
+    if (!confirmed) return;
+
+    setDispatchingId(fulId);
+    try {
+      const token = localStorage.getItem('vendor_token');
+      const res = await fetch(`${BACKEND_URL}/vendor/fulfillments/${fulId}/dispatch`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to dispatch package');
+
+      toast.success(`Dispatched! AWB: ${data.awb || 'Generated'} (${data.courier || 'Courier'})`);
+      fetchOrders();
+    } catch (err) {
+      toast.error(err.message || 'Dispatch failed');
+      fetchOrders();
+    } finally {
+      setDispatchingId(null);
+    }
+  };
+
+  const handleVendorCancel = async (order) => {
+    const fulId = order.fulfillment_id || order.id;
+    const confirmed = window.confirm(
+      `Are you sure you want to cancel package #${order.fulfillment_number || fulId}?\n\nIf a courier pickup was scheduled, it will be cancelled in Shiprocket and items returned to stock.`
+    );
+    if (!confirmed) return;
+
+    setCancellingId(fulId);
+    try {
+      const token = localStorage.getItem('vendor_token');
+      const res = await fetch(`${BACKEND_URL}/vendor/fulfillments/${fulId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ reason: 'Cancelled by Vendor' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to cancel package');
+
+      toast.success(data.message || 'Package cancelled successfully');
+      fetchOrders();
+    } catch (err) {
+      toast.error(err.message || 'Cancellation failed');
+      fetchOrders();
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  const handleVendorSyncStatus = async (order) => {
+    const fulId = order.fulfillment_id || order.id;
+    setSyncingId(fulId);
+    try {
+      const token = localStorage.getItem('vendor_token');
+      const res = await fetch(`${BACKEND_URL}/vendor/fulfillments/${fulId}/sync-status`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to sync status');
+
+      toast.info(data.activity ? `Status: ${data.current_status} (${data.activity})` : `Status: ${data.current_status}`);
+      fetchOrders();
+    } catch (err) {
+      toast.error(err.message || 'Sync failed');
+    } finally {
+      setSyncingId(null);
     }
   };
 
@@ -470,7 +559,7 @@ export function VendorOrdersPage() {
                       </div>
 
                       {/* Package & Dispatch Box */}
-                      <div className="bg-white p-3.5 rounded-xl border border-gray-200/80 shadow-xs space-y-2">
+                      <div className="bg-white p-3.5 rounded-xl border border-gray-200/80 shadow-xs space-y-2.5">
                         <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
                           <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
                             Package & Dispatch
@@ -481,33 +570,94 @@ export function VendorOrdersPage() {
                             </span>
                           )}
                         </div>
-                        <div className="text-xs space-y-1">
+
+                        <div className="text-xs space-y-1.5">
                           {order.pickup_location_nickname && (
                             <p className="text-gray-600">
                               Dispatch Warehouse: <strong className="font-mono text-gray-800">{order.pickup_location_nickname}</strong>
                             </p>
                           )}
-                          {order.awb ? (
-                            <div className="space-y-1.5 mt-1">
+
+                          {order.sync_error && (
+                            <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px]">
+                              ⚠️ {order.sync_error}
+                            </div>
+                          )}
+
+                          {order.status === 'cancelled' ? (
+                            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2">
+                              <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                              <span>Package Cancelled (Inventory Restored)</span>
+                            </div>
+                          ) : order.awb ? (
+                            <div className="space-y-2 mt-1">
                               <div className="flex items-center justify-between p-2 rounded-lg bg-green-50 border border-green-200">
                                 <span className="font-bold text-green-800 text-xs">
                                   🚚 {order.courier || 'Courier'}: {order.awb}
                                 </span>
                                 {order.tracking_link && (
                                   <a href={order.tracking_link} target="_blank" rel="noopener noreferrer"
-                                    className="text-green-700 underline font-bold text-xs">
-                                    Track
+                                    className="text-green-700 underline font-bold text-xs flex items-center gap-1">
+                                    <span>Track</span>
+                                    <ExternalLink className="w-3 h-3" />
                                   </a>
                                 )}
                               </div>
                               <p className="text-[11px] text-blue-700 font-medium px-1">
                                 ✓ Courier collection arranged from your registered warehouse.
                               </p>
+
+                              {/* Action controls for dispatched package */}
+                              <div className="flex items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleVendorSyncStatus(order); }}
+                                  disabled={syncingId === (order.fulfillment_id || order.id)}
+                                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-semibold transition-colors disabled:opacity-50 min-h-[38px]"
+                                >
+                                  <RefreshCw className={`w-3.5 h-3.5 ${syncingId === (order.fulfillment_id || order.id) ? 'animate-spin' : ''}`} />
+                                  <span>{syncingId === (order.fulfillment_id || order.id) ? 'Syncing...' : 'Live Tracking Sync'}</span>
+                                </button>
+
+                                {order.status !== 'shipped' && order.status !== 'delivered' && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleVendorCancel(order); }}
+                                    disabled={cancellingId === (order.fulfillment_id || order.id)}
+                                    className="px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors disabled:opacity-50 min-h-[38px]"
+                                  >
+                                    {cancellingId === (order.fulfillment_id || order.id) ? 'Cancelling...' : 'Cancel'}
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ) : (
-                            <p className="text-gray-500 text-[11px] italic">
-                              Package awaiting dispatch from your registered warehouse.
-                            </p>
+                            <div className="space-y-2 mt-1">
+                              <p className="text-gray-500 text-[11px] italic">
+                                Package awaiting dispatch from your registered warehouse.
+                              </p>
+
+                              <div className="flex items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleVendorDispatch(order); }}
+                                  disabled={dispatchingId === (order.fulfillment_id || order.id)}
+                                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#fe6603] hover:bg-[#e55c02] text-white rounded-xl text-xs font-bold transition-colors shadow-sm disabled:opacity-50 min-h-[42px]"
+                                >
+                                  <Truck className="w-4 h-4 shrink-0" />
+                                  <span>{dispatchingId === (order.fulfillment_id || order.id) ? 'Dispatching...' : '🚚 Dispatch Package'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleVendorCancel(order); }}
+                                  disabled={cancellingId === (order.fulfillment_id || order.id)}
+                                  className="px-3 py-2.5 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors disabled:opacity-50 min-h-[42px]"
+                                >
+                                  {cancellingId === (order.fulfillment_id || order.id) ? 'Cancelling...' : 'Cancel'}
+                                </button>
+                              </div>
+                            </div>
                           )}
                         </div>
                       </div>

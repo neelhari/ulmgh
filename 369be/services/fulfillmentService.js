@@ -2,6 +2,24 @@ const pool = require('../db');
 const shiprocket = require('../utils/shiprocket');
 
 /**
+ * Returns the configured default admin warehouse pickup nickname from app_settings or env.
+ * Defaults to 'suresh' (the primary verified location in Shiprocket) if not set.
+ * @param {object} [dbClient=pool]
+ * @returns {Promise<string>}
+ */
+async function getAdminPickupLocation(dbClient = pool) {
+  try {
+    const res = await dbClient.query("SELECT value FROM app_settings WHERE key = 'admin_pickup_nickname' LIMIT 1");
+    if (res.rows.length > 0 && res.rows[0].value) {
+      return res.rows[0].value;
+    }
+  } catch (e) {
+    // app_settings table might not exist yet before Phase 3 migration
+  }
+  return process.env.SHIPROCKET_PICKUP_LOCATION || 'suresh';
+}
+
+/**
  * Creates fulfillment records for an order atomically inside an existing DB transaction.
  * @param {object} order - Newly inserted order row from DB
  * @param {Array} verifiedItems - Verified items from pricing calculation
@@ -68,7 +86,7 @@ async function createFulfillmentsForOrder(order, verifiedItems, client) {
         }
       } else {
         // Platform / in-house items use platform primary pickup location
-        pickupNickname = process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary';
+        pickupNickname = await getAdminPickupLocation(client);
         pickupId = null;
       }
 
@@ -209,9 +227,19 @@ async function updateParentOrderStatus(orderId, dbClient = pool) {
  * @param {number} fulfillmentId 
  * @param {object} [options={}] - Options for testing/mocking
  */
-async function shipFulfillment(fulfillmentId, options = {}) {
-  const dbClient = options.dbClient || pool;
-  const client = options.shiprocketClient || shiprocket;
+async function shipFulfillment(fulfillmentId, options = {}, clientOverride = null) {
+  let dbClient = pool;
+  let client = shiprocket;
+
+  if (options && typeof options.query === 'function') {
+    // Called with (fulfillmentId, dbClient, [shiprocketClient])
+    dbClient = options;
+    if (clientOverride) client = clientOverride;
+  } else if (options && typeof options === 'object') {
+    // Called with (fulfillmentId, { dbClient, shiprocketClient })
+    dbClient = options.dbClient || pool;
+    client = options.shiprocketClient || clientOverride || shiprocket;
+  }
 
   // 1. Fetch fulfillment, parent order, and vendor information
   const query = `
@@ -232,6 +260,21 @@ async function shipFulfillment(fulfillmentId, options = {}) {
   const f = fulRes.rows[0];
   if (!f) throw new Error(`Fulfillment #${fulfillmentId} not found`);
 
+  // Vendor authorization check if called by a vendor
+  const requestedVendorId = options?.vendorId;
+  if (requestedVendorId && String(f.vendor_id) !== String(requestedVendorId)) {
+    const err = new Error('Unauthorized: You can only dispatch packages assigned to your vendor account');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // Prevent dispatching cancelled packages
+  if (f.status === 'cancelled') {
+    const err = new Error(`Cannot dispatch fulfillment #${f.id}: Package is cancelled`);
+    err.statusCode = 400;
+    throw err;
+  }
+
   // 2. IDEMPOTENCY CHECK 1: Already shipped with AWB
   if (f.status === 'shipped' && f.awb_code) {
     return {
@@ -240,6 +283,22 @@ async function shipFulfillment(fulfillmentId, options = {}) {
       awb: f.awb_code,
       courier: f.courier_name,
       tracking_link: f.tracking_url,
+      fulfillment: f
+    };
+  }
+
+  // IDEMPOTENCY CHECK 2: Already scheduled for pickup with AWB and no active sync errors
+  if (f.status === 'ready_to_ship' && f.awb_code && f.pickup_token_number && !f.sync_error) {
+    return {
+      success: true,
+      alreadyScheduled: true,
+      status: 'ready_to_ship',
+      awb: f.awb_code,
+      courier: f.courier_name,
+      tracking_link: f.tracking_url,
+      label_url: f.label_url,
+      pickup_token_number: f.pickup_token_number,
+      pickup_scheduled_date: f.pickup_scheduled_date,
       fulfillment: f
     };
   }
@@ -263,7 +322,12 @@ async function shipFulfillment(fulfillmentId, options = {}) {
     }
   } else {
     // Platform / in-house product
-    pickupLocation = process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary';
+    pickupLocation = await getAdminPickupLocation(dbClient);
+    if (!pickupLocation) {
+      const err = new Error('Cannot ship platform package: No admin pickup warehouse is configured.');
+      err.statusCode = 400;
+      throw err;
+    }
   }
 
   // 4. Fetch line items for this fulfillment
@@ -369,7 +433,7 @@ async function shipFulfillment(fulfillmentId, options = {}) {
       }
     }
 
-    // 8. STEP 4: Request Courier Pickup from Vendor's Registered Warehouse
+    // 8. STEP 4: Request Courier Pickup from Registered Warehouse
     let pickupTokenNumber = f.pickup_token_number;
     let pickupScheduledDate = f.pickup_scheduled_date;
 
@@ -387,25 +451,37 @@ async function shipFulfillment(fulfillmentId, options = {}) {
                                  pickupRes.response?.data?.pickup_scheduled_date;
         pickupScheduledDate = rawScheduledDate ? new Date(rawScheduledDate) : new Date();
       } catch (pickupErr) {
-        console.error(`Pickup scheduling failed for fulfillment #${f.id}:`, pickupErr.message);
-        const errMsg = `AWB assigned (${awbCode}), but courier pickup booking failed: ${pickupErr.message}`;
-        // Persist AWB & label with 'processing' status (NOT 'ready_to_ship' or 'shipped')
-        // Retrying Dispatch will resume directly at pickup request without duplicate order or AWB
-        await dbClient.query(
-          `UPDATE order_fulfillments 
-           SET awb_code = $1, courier_name = $2, courier_company_id = $3, tracking_url = $4,
-               label_url = COALESCE($5, label_url), sync_error = $6, status = 'processing', updated_at = NOW()
-           WHERE id = $7`,
-          [awbCode, courierName, courierCompanyId, trackingUrl, labelUrl, errMsg, f.id]
-        );
-        const err = new Error(errMsg);
-        err.statusCode = 502;
-        throw err;
+        const rawMsg = pickupErr.message || '';
+        const isAlreadyQueued = rawMsg.toLowerCase().includes('already in pickup queue') || 
+                               rawMsg.toLowerCase().includes('already in queue') ||
+                               rawMsg.toLowerCase().includes('already queued') ||
+                               rawMsg.toLowerCase().includes('pickup already');
+
+        if (isAlreadyQueued) {
+          // Idempotency: Shiprocket already accepted pickup scheduling into queue.
+          // This is a normal queued state, NOT a dispatch failure.
+          console.log(`Fulfillment #${f.id} pickup is already in Shiprocket queue, marking scheduled.`);
+          pickupTokenNumber = f.pickup_token_number || 'PICKUP_QUEUED';
+          pickupScheduledDate = f.pickup_scheduled_date || new Date();
+        } else {
+          console.error(`Pickup scheduling failed for fulfillment #${f.id}:`, rawMsg);
+          const errMsg = `AWB assigned (${awbCode}), but courier pickup booking failed: ${rawMsg}`;
+          await dbClient.query(
+            `UPDATE order_fulfillments 
+             SET awb_code = $1, courier_name = $2, courier_company_id = $3, tracking_url = $4,
+                 label_url = COALESCE($5, label_url), sync_error = $6, status = 'processing', updated_at = NOW()
+             WHERE id = $7`,
+            [awbCode, courierName, courierCompanyId, trackingUrl, labelUrl, errMsg, f.id]
+          );
+          const err = new Error(errMsg);
+          err.statusCode = 502;
+          throw err;
+        }
       }
     }
 
     // 9. STEP 5: Persist successful dispatch & pickup details
-    // The fulfillment status is 'ready_to_ship' (Pickup Scheduled) only when pickup booking succeeded
+    // The fulfillment status is 'ready_to_ship' (Pickup Scheduled)
     const newStatus = 'ready_to_ship';
 
     const updatedFulRes = await dbClient.query(
@@ -452,10 +528,14 @@ async function shipFulfillment(fulfillmentId, options = {}) {
     };
   } catch (err) {
     console.error(`Shiprocket shipping failed for fulfillment #${f.id}:`, err.message);
-    // Record error in database so Admin and Vendor UI can inspect
+    // If an AWB or processing status is already saved, do not overwrite with 'failed'
+    const statusCheck = await dbClient.query('SELECT awb_code, status FROM order_fulfillments WHERE id = $1', [f.id]);
+    const currentStatus = statusCheck.rows[0]?.status;
+    const finalStatus = (currentStatus === 'processing' || statusCheck.rows[0]?.awb_code) ? 'processing' : 'failed';
+
     await dbClient.query(
       'UPDATE order_fulfillments SET sync_error = $1, status = $2, updated_at = NOW() WHERE id = $3',
-      [err.message, 'failed', f.id]
+      [err.message, finalStatus, f.id]
     );
     throw err;
   }
@@ -563,10 +643,228 @@ async function backfillHistoricalOrders(dbClient = pool) {
   return backfilledCount;
 }
 
+/**
+ * Synchronizes fulfillment status with live Shiprocket tracking.
+ * Safe read-only poll from Shiprocket API, then updates DB record and parent order status.
+ * @param {number} fulfillmentId 
+ * @param {object} [dbClient=pool] 
+ * @param {object} [clientOverride=shiprocket] 
+ */
+async function syncFulfillmentStatus(fulfillmentId, dbClient = pool, clientOverride = shiprocket) {
+  const fulRes = await dbClient.query(
+    `SELECT f.*, v.name as vendor_name 
+     FROM order_fulfillments f 
+     LEFT JOIN vendors v ON f.vendor_id = v.id 
+     WHERE f.id = $1`,
+    [fulfillmentId]
+  );
+  const f = fulRes.rows[0];
+  if (!f) throw new Error(`Fulfillment #${fulfillmentId} not found`);
+
+  if (!f.awb_code && !f.shiprocket_order_id) {
+    return {
+      synced: false,
+      message: 'No Shiprocket order or AWB code exists for this package yet.',
+      fulfillment: f
+    };
+  }
+
+  let trackingData = null;
+  let newStatus = f.status;
+  let statusActivity = null;
+
+  if (f.awb_code && clientOverride.getTrackingByAwb) {
+    try {
+      const trackRes = await clientOverride.getTrackingByAwb(f.awb_code);
+      const tracking = trackRes.tracking_data || trackRes;
+      trackingData = tracking;
+      
+      const currentStatusStr = String(
+        tracking.shipment_track?.[0]?.current_status || 
+        tracking.shipment_track_activities?.[0]?.['sr-status-label'] ||
+        tracking.shipment_track_activities?.[0]?.status ||
+        (typeof tracking.track_status === 'string' ? tracking.track_status : '')
+      ).toUpperCase();
+
+      const statusCode = Number(tracking.shipment_status || tracking.shipment_track?.[0]?.current_status_id || 0);
+
+      statusActivity = tracking.shipment_track_activities?.[0]?.activity || 
+                       tracking.shipment_track?.[0]?.current_status || 
+                       currentStatusStr;
+
+      // Map Shiprocket statuses to internal ULMGH package status
+      if (['DELIVERED'].includes(currentStatusStr) || statusCode === 7) {
+        newStatus = 'delivered';
+      } else if (['IN TRANSIT', 'OUT FOR DELIVERY', 'PICKED UP', 'SHIPPED'].includes(currentStatusStr) || [6, 17, 18].includes(statusCode)) {
+        newStatus = 'shipped';
+      } else if (
+        ['OUT FOR PICKUP', 'OUT_FOR_PICKUP', 'PICKUP SCHEDULED', 'PICKUP QUEUED', 'AWB ASSIGNED', 'READY FOR PICKUP'].includes(currentStatusStr) ||
+        currentStatusStr.includes('PICKUP') ||
+        [19, 34, 42].includes(statusCode)
+      ) {
+        newStatus = 'ready_to_ship';
+      } else if (['CANCELED', 'CANCELLED'].includes(currentStatusStr) || statusCode === 8) {
+        newStatus = 'cancelled';
+      }
+    } catch (trackErr) {
+      console.warn(`Tracking fetch failed for fulfillment #${f.id}:`, trackErr.message);
+    }
+  }
+
+  // Update DB with synchronized status and clear stale sync_error
+  const updateRes = await dbClient.query(
+    `UPDATE order_fulfillments 
+     SET status = $1, 
+         sync_error = NULL, 
+         updated_at = NOW() 
+     WHERE id = $2 
+     RETURNING *`,
+    [newStatus, f.id]
+  );
+
+  await updateParentOrderStatus(f.order_id, dbClient);
+
+  return {
+    synced: true,
+    previous_status: f.status,
+    current_status: newStatus,
+    activity: statusActivity,
+    tracking_data: trackingData,
+    fulfillment: updateRes.rows[0]
+  };
+}
+
+/**
+ * Safely cancels a package.
+ * Respects status restrictions and calls Shiprocket to cancel before updating DB.
+ * Restores product inventory for items in this package.
+ * @param {number} fulfillmentId 
+ * @param {object} [options={}] 
+ * @param {object} [dbClient=pool] 
+ * @param {object} [clientOverride=shiprocket] 
+ */
+async function cancelFulfillmentPackage(fulfillmentId, options = {}, dbClient = pool, clientOverride = shiprocket) {
+  const { cancelledBy = 'admin', vendorId = null, reason = 'Cancelled by user' } = options;
+
+  const fulRes = await dbClient.query(
+    `SELECT f.*, o.order_number 
+     FROM order_fulfillments f
+     JOIN orders o ON f.order_id = o.id
+     WHERE f.id = $1`,
+    [fulfillmentId]
+  );
+  const f = fulRes.rows[0];
+  if (!f) throw new Error(`Fulfillment #${fulfillmentId} not found`);
+
+  // 1. Authorization: Vendors can only cancel packages belonging to their vendor_id
+  if (cancelledBy === 'vendor') {
+    if (!vendorId || String(f.vendor_id) !== String(vendorId)) {
+      const err = new Error('Unauthorized: You can only cancel packages assigned to your vendor account');
+      err.statusCode = 403;
+      throw err;
+    }
+  }
+
+  // 2. Status restrictions
+  if (f.status === 'cancelled') {
+    return {
+      success: true,
+      alreadyCancelled: true,
+      fulfillment: f,
+      message: 'Package is already cancelled'
+    };
+  }
+
+  if (f.status === 'delivered') {
+    const err = new Error('Cannot cancel a package that has already been delivered');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (f.status === 'shipped') {
+    const err = new Error('Cannot cancel package: Shipment has already been collected/shipped by courier.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // 3. Shiprocket cancellation:
+  // If an AWB was assigned, attempt Shiprocket cancellation before DB changes
+  if (f.awb_code && clientOverride.cancelShipment) {
+    try {
+      const cancelRes = await clientOverride.cancelShipment(f.awb_code);
+      console.log(`Shiprocket cancellation response for AWB ${f.awb_code}:`, cancelRes);
+    } catch (srErr) {
+      console.error(`Shiprocket cancellation failed for AWB ${f.awb_code}:`, srErr.message);
+      const msg = srErr.message || 'Shiprocket rejected cancellation';
+      const err = new Error(`Cannot cancel shipment in Shiprocket: ${msg}`);
+      err.statusCode = 400;
+      throw err;
+    }
+  } else if (f.shiprocket_order_id && clientOverride.cancelOrder) {
+    try {
+      await clientOverride.cancelOrder(f.shiprocket_order_id);
+    } catch (srOrderErr) {
+      console.warn(`Shiprocket cancel order warning for order ${f.shiprocket_order_id}:`, srOrderErr.message);
+    }
+  }
+
+  // 4. In a transaction: Restore inventory and mark package cancelled
+  const client = await (dbClient.connect ? dbClient.connect() : dbClient);
+  const isOwnClient = !!dbClient.connect;
+
+  try {
+    if (isOwnClient) await client.query('BEGIN');
+
+    // Fetch items in this fulfillment to restore inventory
+    const itemsRes = await client.query(
+      'SELECT product_id, quantity FROM order_fulfillment_items WHERE fulfillment_id = $1',
+      [f.id]
+    );
+
+    for (const it of itemsRes.rows) {
+      if (it.product_id && it.quantity > 0) {
+        await client.query(
+          'UPDATE products SET stock = stock + $1 WHERE id = $2',
+          [it.quantity, it.product_id]
+        );
+      }
+    }
+
+    const updatedFulRes = await client.query(
+      `UPDATE order_fulfillments 
+       SET status = 'cancelled', 
+           sync_error = NULL, 
+           updated_at = NOW() 
+       WHERE id = $1 
+       RETURNING *`,
+      [f.id]
+    );
+
+    await updateParentOrderStatus(f.order_id, client);
+
+    if (isOwnClient) await client.query('COMMIT');
+
+    return {
+      success: true,
+      status: 'cancelled',
+      fulfillment: updatedFulRes.rows[0],
+      message: `Package ${f.fulfillment_number} cancelled successfully and inventory restored`
+    };
+  } catch (txErr) {
+    if (isOwnClient) await client.query('ROLLBACK');
+    throw txErr;
+  } finally {
+    if (isOwnClient) client.release();
+  }
+}
+
 module.exports = {
   createFulfillmentsForOrder,
   updateParentOrderStatus,
   shipFulfillment,
   getFulfillmentsForOrder,
-  backfillHistoricalOrders
+  backfillHistoricalOrders,
+  getAdminPickupLocation,
+  syncFulfillmentStatus,
+  cancelFulfillmentPackage
 };

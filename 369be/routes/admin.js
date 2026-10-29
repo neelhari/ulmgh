@@ -96,23 +96,41 @@ router.put('/orders/:id/status', authMiddleware, adminOnly, async (req, res) => 
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    // Only restore stock if transitioning to 'cancelled' and was not already cancelled
+    // Only restore stock and cancel shipments if transitioning to 'cancelled' and was not already cancelled
     if (status === 'cancelled' && order.status !== 'cancelled') {
-      let items = [];
-      try {
-        items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
-      } catch (parseErr) {
-        items = [];
-      }
+      const fulCheck = await client.query(
+        'SELECT id, status FROM order_fulfillments WHERE order_id = $1',
+        [orderId]
+      );
 
-      for (const item of items) {
-        const prodId = item.product?.id || item.id;
-        const qty = Math.max(1, parseInt(item.qty || item.quantity || 1, 10));
-        if (prodId) {
-          await client.query(
-            'UPDATE products SET stock = stock + $1 WHERE id = $2',
-            [qty, prodId]
-          );
+      if (fulCheck.rows.length > 0) {
+        // Cancel each active fulfillment package (cancels Shiprocket shipments & restores inventory)
+        for (const ful of fulCheck.rows) {
+          if (ful.status !== 'cancelled') {
+            await fulfillmentService.cancelFulfillmentPackage(ful.id, {
+              cancelledBy: 'admin',
+              reason: 'Order cancelled by Admin'
+            }, client);
+          }
+        }
+      } else {
+        // Fallback for legacy orders without fulfillment packages
+        let items = [];
+        try {
+          items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+        } catch (parseErr) {
+          items = [];
+        }
+
+        for (const item of items) {
+          const prodId = item.product?.id || item.id;
+          const qty = Math.max(1, parseInt(item.qty || item.quantity || 1, 10));
+          if (prodId) {
+            await client.query(
+              'UPDATE products SET stock = stock + $1 WHERE id = $2',
+              [qty, prodId]
+            );
+          }
         }
       }
     }
@@ -155,11 +173,100 @@ router.post('/fulfillments/:id/retry', authMiddleware, adminOnly, async (req, re
   }
 });
 
+// POST /api/admin/fulfillments/:id/cancel - Admin cancels any fulfillment package
+router.post('/fulfillments/:id/cancel', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const result = await fulfillmentService.cancelFulfillmentPackage(req.params.id, {
+      cancelledBy: 'admin',
+      reason: req.body?.reason || 'Cancelled by Admin'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/fulfillments/:id/sync-status - Admin syncs live courier status for any package
+router.post('/fulfillments/:id/sync-status', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const result = await fulfillmentService.syncFulfillmentStatus(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
 // POST /api/admin/orders/:id/ship [DEPRECATED in Phase 3 - Disabled to prevent duplicate whole-order shipping]
 router.post('/orders/:id/ship', authMiddleware, adminOnly, async (req, res) => {
   return res.status(409).json({
     error: 'Whole-order shipping is disabled in Phase 3. Please dispatch individual vendor packages using POST /api/admin/fulfillments/:id/ship.'
   });
+});
+
+// GET /api/admin/warehouse-settings - Fetch registered Shiprocket warehouses and current admin selection
+router.get('/warehouse-settings', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const locations = await shiprocket.getPickupLocations();
+
+    let selectedNickname = 'suresh';
+    const settingRes = await pool.query("SELECT value FROM app_settings WHERE key = 'admin_pickup_nickname' LIMIT 1");
+    if (settingRes.rows.length > 0 && settingRes.rows[0].value) {
+      selectedNickname = settingRes.rows[0].value;
+    }
+
+    const activeWarehouse = (locations || []).find(l => {
+      const nick = (l.pickup_location || l.pickup_location_nickname || l.nickname || '').toLowerCase();
+      return nick === selectedNickname.toLowerCase();
+    }) || null;
+
+    res.json({
+      selected_nickname: selectedNickname,
+      locations: locations || [],
+      active_warehouse: activeWarehouse
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/admin/warehouse-settings - Update default admin warehouse
+router.put('/warehouse-settings', authMiddleware, adminOnly, async (req, res) => {
+  const { nickname } = req.body || {};
+  if (!nickname || typeof nickname !== 'string' || !nickname.trim()) {
+    return res.status(400).json({ error: 'Warehouse nickname is required' });
+  }
+
+  const cleanNickname = nickname.trim();
+
+  try {
+    const locations = await shiprocket.getPickupLocations();
+    const matchedLoc = (locations || []).find(l => {
+      const nick = (l.pickup_location || l.pickup_location_nickname || l.nickname || '').toLowerCase();
+      return nick === cleanNickname.toLowerCase();
+    });
+
+    if (!matchedLoc) {
+      return res.status(400).json({
+        error: `Warehouse "${cleanNickname}" was not found in your registered Shiprocket pickup locations.`
+      });
+    }
+
+    await pool.query(
+      `INSERT INTO app_settings (key, value, description, updated_at)
+       VALUES ('admin_pickup_nickname', $1, 'Primary Shiprocket pickup location for platform/admin-owned products', NOW())
+       ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+      [cleanNickname]
+    );
+
+    res.json({
+      success: true,
+      selected_nickname: cleanNickname,
+      warehouse: matchedLoc,
+      message: `Default admin warehouse successfully set to "${cleanNickname}"`
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- Products ---

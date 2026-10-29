@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const pool = require('../db');
 const { vendorAuthMiddleware } = require('./vendorAuth');
+const fulfillmentService = require('../services/fulfillmentService');
 const {
   validatePickupAddress,
   generateShiprocketNickname,
@@ -280,6 +281,70 @@ router.put('/fulfillments/:id/status', async (req, res) => {
     res.json({ fulfillment: updateRes.rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/vendor/fulfillments/:id/dispatch - Vendor dispatches their own package via Shiprocket
+router.post('/fulfillments/:id/dispatch', async (req, res) => {
+  const fulfillmentId = req.params.id;
+  try {
+    const checkRes = await pool.query(
+      'SELECT id, vendor_id, status FROM order_fulfillments WHERE id = $1',
+      [fulfillmentId]
+    );
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Fulfillment package not found' });
+    }
+    const f = checkRes.rows[0];
+    if (String(f.vendor_id) !== String(req.vendorId)) {
+      return res.status(403).json({ error: 'Unauthorized: You can only dispatch packages assigned to your vendor account' });
+    }
+    if (f.status === 'cancelled') {
+      return res.status(400).json({ error: 'Cannot dispatch a cancelled package' });
+    }
+
+    const result = await fulfillmentService.shipFulfillment(fulfillmentId, { vendorId: req.vendorId });
+    res.json(result);
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+// POST /api/vendor/fulfillments/:id/cancel - Vendor cancels their own package
+router.post('/fulfillments/:id/cancel', async (req, res) => {
+  const fulfillmentId = req.params.id;
+  const { reason } = req.body || {};
+  try {
+    const result = await fulfillmentService.cancelFulfillmentPackage(fulfillmentId, {
+      cancelledBy: 'vendor',
+      vendorId: req.vendorId,
+      reason
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+// POST /api/vendor/fulfillments/:id/sync-status - Vendor syncs live courier status for their package
+router.post('/fulfillments/:id/sync-status', async (req, res) => {
+  const fulfillmentId = req.params.id;
+  try {
+    const checkRes = await pool.query(
+      'SELECT id, vendor_id FROM order_fulfillments WHERE id = $1',
+      [fulfillmentId]
+    );
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Fulfillment package not found' });
+    }
+    if (String(checkRes.rows[0].vendor_id) !== String(req.vendorId)) {
+      return res.status(403).json({ error: 'Unauthorized: You can only view status of your own packages' });
+    }
+
+    const result = await fulfillmentService.syncFulfillmentStatus(fulfillmentId);
+    res.json(result);
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

@@ -108,26 +108,46 @@ export function VendorLayout({ children }) {
       {/* ─────────────────────────────────────────────────────────────
           1. MOBILE TOP HEADER (Fixed with Safe Area)
       ───────────────────────────────────────────────────────────── */}
-      <header className="md:hidden fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b border-gray-200/80 px-4 pt-safe z-50 flex items-center justify-between h-14 shadow-sm">
-        <Link to="/vendor" className="flex items-center gap-2.5 min-w-0" onClick={() => setMobileOpen(false)}>
-          <div className="w-8 h-8 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center flex-shrink-0">
-            <img src={logo} alt="ULMGH369 Logo" className="w-6 h-6 object-contain mix-blend-multiply" />
-          </div>
-          <div className="flex items-center gap-1.5 min-w-0 truncate">
-            <span className="font-extrabold text-base tracking-tight text-[#fe6603]">ULMGH369</span>
-            <span className="text-gray-900 font-bold text-sm tracking-tight truncate">Vendor Portal</span>
-          </div>
-        </Link>
-        <button
-          type="button"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          className="w-11 h-11 flex items-center justify-center rounded-xl text-gray-700 hover:text-[#fe6603] hover:bg-orange-50 active:bg-orange-100 transition-colors flex-shrink-0"
-          aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
-          aria-expanded={mobileOpen}
-        >
-          {mobileOpen ? <X className="w-6 h-6 text-[#fe6603]" /> : <Menu className="w-6 h-6" />}
-        </button>
+      <header
+        className="md:hidden fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b border-gray-200/80 z-50 shadow-sm"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
+        <div className="flex items-center justify-between h-14 px-4">
+          <Link
+            to="/vendor"
+            className="flex items-center gap-2.5 min-w-0 flex-1 mr-2"
+            onClick={() => setMobileOpen(false)}
+          >
+            <img
+              src={logo}
+              alt="ULMGH369 Logo"
+              className="h-8 w-auto max-h-8 object-contain mix-blend-multiply flex-shrink-0"
+            />
+            <div className="flex items-baseline gap-1.5 min-w-0">
+              <span className="font-extrabold text-base tracking-tight text-[#fe6603] whitespace-nowrap">
+                ULMGH369
+              </span>
+              <span className="text-gray-900 font-bold text-sm tracking-tight whitespace-nowrap truncate">
+                Vendor Portal
+              </span>
+            </div>
+          </Link>
+          <button
+            type="button"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="w-10 h-10 flex items-center justify-center rounded-xl text-gray-700 hover:text-[#fe6603] hover:bg-orange-50 active:bg-orange-100 transition-colors flex-shrink-0"
+            aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={mobileOpen}
+          >
+            {mobileOpen ? <X className="w-6 h-6 text-[#fe6603]" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
       </header>
+      <div
+        className="md:hidden w-full flex-shrink-0"
+        style={{ height: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}
+        aria-hidden="true"
+      />
 
       {/* ─────────────────────────────────────────────────────────────
           2. MOBILE SIDEBAR DRAWER OVERLAY & MENU
@@ -330,7 +350,7 @@ export function VendorLayout({ children }) {
       {/* ─────────────────────────────────────────────────────────────
           4. MAIN CONTENT AREA (With Safe Area & Bottom Nav Clearance)
       ───────────────────────────────────────────────────────────── */}
-      <main className="flex-1 md:ml-72 p-3.5 sm:p-6 lg:p-8 pt-20 md:pt-8 pb-28 md:pb-8 min-w-0 transition-all">
+      <main className="flex-1 md:ml-72 p-3.5 sm:p-6 lg:p-8 pt-4 md:pt-8 pb-28 md:pb-8 min-w-0 transition-all">
         <div className="max-w-7xl mx-auto">
           {children}
         </div>

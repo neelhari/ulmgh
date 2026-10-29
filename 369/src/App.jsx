@@ -61,6 +61,7 @@ import { AdminOffersPage } from './pages/admin/AdminOffersPage';
 import { AdminAdvertisementsPage } from './pages/admin/AdminAdvertisementsPage';
 import { AdminProductRequestsPage } from './pages/admin/AdminProductRequestsPage';
 import { AdminFAQsPage } from './pages/admin/AdminFAQsPage';
+import { AdminWarehousePage } from './pages/admin/AdminWarehousePage';
 
 import { SupportLayout } from './components/support/SupportLayout';
 import { SupportLoginPage } from './pages/support/SupportLoginPage';
@@ -82,6 +83,8 @@ import { VendorProfilePage } from './pages/vendor/VendorProfilePage';
 import { VendorSupportPage } from './pages/vendor/VendorSupportPage';
 import { VendorOffersPage } from './pages/vendor/VendorOffersPage';
 import { VendorProductFormPage } from './pages/vendor/VendorProductFormPage';
+
+const isVendorApp = import.meta.env.VITE_APP_TARGET === 'vendor';
 
 function PageTransition({ children }) {
   if (Capacitor.isNativePlatform()) {
@@ -110,10 +113,18 @@ function AppBackButtonHandler() {
     let backListener;
     const addListener = async () => {
       backListener = await CapApp.addListener('backButton', () => {
-        if (location.pathname === '/' || location.pathname === '') {
-          CapApp.exitApp();
+        if (isVendorApp) {
+          if (location.pathname === '/vendor' || location.pathname === '/vendor-login' || location.pathname === '/') {
+            CapApp.exitApp();
+          } else {
+            navigate(-1);
+          }
         } else {
-          navigate(-1);
+          if (location.pathname === '/' || location.pathname === '') {
+            CapApp.exitApp();
+          } else {
+            navigate(-1);
+          }
         }
       });
     };
@@ -188,6 +199,43 @@ function App() {
     }
   }, [fetchData]);
 
+  if (isVendorApp) {
+    return (
+      <>
+        {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
+        <div style={{ opacity: showSplash ? 0 : 1 }} className="transition-opacity duration-300">
+          <BrowserRouter>
+            <AppBackButtonHandler />
+            <Routes>
+              <Route path="/vendor-login" element={<VendorLoginPage />} />
+              <Route path="/vendor-signup" element={<VendorSignupPage />} />
+              <Route path="/vendor-guidelines" element={<VendorGuidelinesPage />} />
+              <Route path="/vendor/*" element={
+                <VendorLayout>
+                  <Routes>
+                    <Route path="/" element={<VendorDashboardPage />} />
+                    <Route path="products" element={<VendorProductsPage />} />
+                    <Route path="products/new" element={<VendorProductFormPage />} />
+                    <Route path="products/:id/edit" element={<VendorProductFormPage />} />
+                    <Route path="orders" element={<VendorOrdersPage />} />
+                    <Route path="categories" element={<VendorCategoriesPage />} />
+                    <Route path="wallet" element={<VendorWalletPage />} />
+                    <Route path="profile" element={<VendorProfilePage />} />
+                    <Route path="support" element={<VendorSupportPage />} />
+                    <Route path="offers" element={<VendorOffersPage />} />
+                    <Route path="guidelines" element={<VendorGuidelinesPage />} />
+                  </Routes>
+                </VendorLayout>
+              } />
+              <Route path="*" element={<Navigate to="/vendor" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </div>
+        <ToastContainer position="bottom-right" />
+      </>
+    );
+  }
+
   return (
     <>
       {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
@@ -230,6 +278,7 @@ function App() {
                       <Route path="advertisements" element={<AdminAdvertisementsPage />} />
                       <Route path="product-requests" element={<AdminProductRequestsPage />} />
                       <Route path="faqs" element={<AdminFAQsPage />} />
+                      <Route path="warehouses" element={<AdminWarehousePage />} />
                     </Routes>
                   </AdminLayout>
                 } />

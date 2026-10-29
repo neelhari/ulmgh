@@ -128,6 +128,72 @@ async function registerPickupLocation(pickupData) {
   }
 }
 
+async function cancelShipment(awbs) {
+  const token = await authenticate();
+  const awbList = Array.isArray(awbs) ? awbs : [awbs];
+
+  try {
+    const response = await axios.post(`${BASE_URL}/orders/cancel/shipment/awbs`, {
+      awbs: awbList
+    }, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Shiprocket Cancel Shipment Error:', error.response?.data || error.message);
+    const errMsg = error.response?.data?.message || error.message;
+    throw new Error(errMsg || 'Failed to cancel shipment in Shiprocket');
+  }
+}
+
+async function cancelOrder(orderIds) {
+  const token = await authenticate();
+  const idList = Array.isArray(orderIds) ? orderIds : [orderIds];
+
+  try {
+    const response = await axios.post(`${BASE_URL}/orders/cancel`, {
+      ids: idList
+    }, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Shiprocket Cancel Order Error:', error.response?.data || error.message);
+    const errMsg = error.response?.data?.message || error.message;
+    throw new Error(errMsg || 'Failed to cancel order in Shiprocket');
+  }
+}
+
+async function getTrackingByAwb(awbCode) {
+  const token = await authenticate();
+
+  try {
+    const response = await axios.get(`${BASE_URL}/courier/track/awb/${encodeURIComponent(awbCode)}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Shiprocket Track AWB Error:', error.response?.data || error.message);
+    const errMsg = error.response?.data?.message || error.message;
+    throw new Error(errMsg || 'Failed to fetch tracking details from Shiprocket');
+  }
+}
+
+async function getOrderDetails(orderId) {
+  const token = await authenticate();
+
+  try {
+    const response = await axios.get(`${BASE_URL}/orders/show/${encodeURIComponent(orderId)}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Shiprocket Get Order Error:', error.response?.data || error.message);
+    const errMsg = error.response?.data?.message || error.message;
+    throw new Error(errMsg || 'Failed to fetch order details from Shiprocket');
+  }
+}
+
 module.exports = {
   authenticate,
   createCustomOrder,
@@ -135,5 +201,9 @@ module.exports = {
   requestPickup,
   generateLabel,
   getPickupLocations,
-  registerPickupLocation
+  registerPickupLocation,
+  cancelShipment,
+  cancelOrder,
+  getTrackingByAwb,
+  getOrderDetails
 };

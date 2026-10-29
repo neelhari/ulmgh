@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { MessageCircle, ChevronDown, Printer, FileText, ExternalLink } from "lucide-react";
+import { MessageCircle, ChevronDown, Printer, FileText, ExternalLink, RefreshCw, XCircle, RotateCcw, Truck } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
@@ -32,6 +32,8 @@ export function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [tracking, setTracking] = useState({});
   const [shipping, setShipping] = useState({});
+  const [cancelling, setCancelling] = useState({});
+  const [syncing, setSyncing] = useState({});
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -110,6 +112,78 @@ export function AdminOrdersPage() {
       }));
     } finally {
       setShipping((p) => ({ ...p, [fulfillmentId]: false }));
+    }
+  };
+
+  const cancelFulfillmentShipment = async (fulfillmentId, orderId, fulNumber) => {
+    const confirmed = window.confirm(
+      `Confirm Cancellation: Cancel package #${fulNumber || fulfillmentId}?\n\nThis will cancel the shipment in Shiprocket and return item quantities to inventory.`
+    );
+    if (!confirmed) return;
+
+    const token = localStorage.getItem("token");
+    setCancelling((p) => ({ ...p, [fulfillmentId]: true }));
+    try {
+      const res = await fetch(`${BACKEND_URL}/admin/fulfillments/${fulfillmentId}/cancel`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ reason: "Admin cancelled package" })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to cancel shipment");
+
+      setOrders((prev) => prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const updatedFulfillments = (o.fulfillments || []).map(f => {
+          if (f.id !== fulfillmentId) return f;
+          return { ...f, status: "cancelled", sync_error: null };
+        });
+        const allCancelled = updatedFulfillments.every(f => f.status === 'cancelled');
+        return {
+          ...o,
+          status: allCancelled ? 'cancelled' : o.status,
+          fulfillments: updatedFulfillments
+        };
+      }));
+      alert(data.message || "Package cancelled and inventory restored successfully.");
+    } catch (err) {
+      alert(`Cancellation error: ${err.message}`);
+    } finally {
+      setCancelling((p) => ({ ...p, [fulfillmentId]: false }));
+    }
+  };
+
+  const syncFulfillmentStatus = async (fulfillmentId, orderId) => {
+    const token = localStorage.getItem("token");
+    setSyncing((p) => ({ ...p, [fulfillmentId]: true }));
+    try {
+      const res = await fetch(`${BACKEND_URL}/admin/fulfillments/${fulfillmentId}/sync-status`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to sync status");
+
+      setOrders((prev) => prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const updatedFulfillments = (o.fulfillments || []).map(f => {
+          if (f.id !== fulfillmentId) return f;
+          return {
+            ...f,
+            status: data.current_status || f.status,
+            sync_error: null
+          };
+        });
+        return { ...o, fulfillments: updatedFulfillments };
+      }));
+      alert(`Live tracking synced: ${data.current_status}${data.activity ? ` (${data.activity})` : ''}`);
+    } catch (err) {
+      alert(`Sync error: ${err.message}`);
+    } finally {
+      setSyncing((p) => ({ ...p, [fulfillmentId]: false }));
     }
   };
 
@@ -530,7 +604,7 @@ export function AdminOrdersPage() {
                               </div>
 
                               <div className="text-[11px] text-gray-600 flex items-center justify-between">
-                                <span>Warehouse: <strong className="font-mono text-gray-800">{ful.pickup_location_nickname || 'Primary'}</strong></span>
+                                <span>Warehouse: <strong className="font-mono text-gray-800">{ful.pickup_location_nickname || 'suresh (Admin Default)'}</strong></span>
                                 <span className="font-bold text-gray-900">₹{parseFloat(ful.subtotal || ful.total_amount || 0).toLocaleString()}</span>
                               </div>
 
@@ -540,16 +614,22 @@ export function AdminOrdersPage() {
                                 </p>
                               )}
 
-                              {ful.awb_code ? (
-                                <div className="space-y-1.5">
+                              {ful.status === 'cancelled' ? (
+                                <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-1.5">
+                                  <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                                  <span>Package Cancelled (Inventory Restored)</span>
+                                </div>
+                              ) : ful.awb_code ? (
+                                <div className="space-y-2">
                                   <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5">
                                     <span className="text-green-800 font-bold text-xs truncate">
                                       AWB: {ful.awb_code} {ful.courier_name ? `(${ful.courier_name})` : ''}
                                     </span>
                                     {ful.tracking_url && (
                                       <a href={ful.tracking_url} target="_blank" rel="noopener noreferrer"
-                                        className="ml-auto text-green-700 hover:text-green-900" title="Live Tracking">
-                                        <ExternalLink className="w-3.5 h-3.5" />
+                                        className="ml-auto text-green-700 hover:text-green-900 flex items-center gap-0.5" title="Live Tracking">
+                                        <span className="text-[10px] font-bold underline">Track</span>
+                                        <ExternalLink className="w-3 h-3" />
                                       </a>
                                     )}
                                   </div>
@@ -568,16 +648,67 @@ export function AdminOrdersPage() {
                                       )}
                                     </div>
                                   )}
+
+                                  {/* Action bar for dispatched packages */}
+                                  <div className="flex items-center gap-1.5 pt-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => syncFulfillmentStatus(ful.id, order.id)}
+                                      disabled={syncing[ful.id]}
+                                      className="flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 hover:bg-white text-gray-700 text-[11px] font-semibold transition-colors disabled:opacity-50"
+                                      title="Sync live courier tracking status from Shiprocket"
+                                    >
+                                      <RefreshCw className={`w-3 h-3 ${syncing[ful.id] ? 'animate-spin' : ''}`} />
+                                      <span>{syncing[ful.id] ? 'Syncing...' : 'Live Status'}</span>
+                                    </button>
+
+                                    {(ful.status === 'failed' || ful.sync_error) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => createFulfillmentShipment(ful.id, order.id)}
+                                        disabled={shipping[ful.id]}
+                                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold transition-colors disabled:opacity-50"
+                                        title="Retry pickup booking"
+                                      >
+                                        <RotateCcw className="w-3 h-3" />
+                                        <span>Retry</span>
+                                      </button>
+                                    )}
+
+                                    {ful.status !== 'shipped' && ful.status !== 'delivered' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => cancelFulfillmentShipment(ful.id, order.id, ful.fulfillment_number)}
+                                        disabled={cancelling[ful.id]}
+                                        className="px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-semibold transition-colors disabled:opacity-50"
+                                        title="Cancel shipment in Shiprocket and return stock"
+                                      >
+                                        {cancelling[ful.id] ? 'Cancelling...' : 'Cancel'}
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => createFulfillmentShipment(ful.id, order.id)}
-                                  disabled={shipping[ful.id]}
-                                  className="w-full flex items-center justify-center gap-1.5 bg-[#fe6603] hover:bg-[#e55c02] text-white py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
-                                >
-                                  {shipping[ful.id] ? "Dispatching..." : `🚚 Dispatch Package (${ful.vendor_name || 'Vendor'})`}
-                                </button>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => createFulfillmentShipment(ful.id, order.id)}
+                                    disabled={shipping[ful.id] || cancelling[ful.id]}
+                                    className="flex-1 flex items-center justify-center gap-1.5 bg-[#fe6603] hover:bg-[#e55c02] text-white py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                                  >
+                                    <Truck className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{shipping[ful.id] ? "Dispatching..." : `🚚 Dispatch (${ful.vendor_name || 'In-House'})`}</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => cancelFulfillmentShipment(ful.id, order.id, ful.fulfillment_number)}
+                                    disabled={shipping[ful.id] || cancelling[ful.id]}
+                                    className="px-2.5 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors disabled:opacity-50"
+                                  >
+                                    {cancelling[ful.id] ? 'Cancelling...' : 'Cancel'}
+                                  </button>
+                                </div>
                               )}
                             </div>
                           ))}

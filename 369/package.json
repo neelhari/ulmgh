@@ -10,6 +10,7 @@
     "android:sync": "npm run build && npx cap sync",
     "android:live": "node scripts/android-live.js",
     "android:release-check": "node scripts/release-check.js",
+    "vendor:sync": "node scripts/vendor-sync.js",
     "lint": "oxlint",
     "preview": "vite preview"
   },
