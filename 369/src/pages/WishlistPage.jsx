@@ -5,11 +5,12 @@ import { Header } from '../components/Header';
 import { useWishlistStore } from '../store/useWishlistStore';
 import { useStoreData } from '../store/useStoreData';
 import { useCartStore } from '../store/useCartStore';
+import { calculateProductPricing } from '../utils/pricing';
 
 export function WishlistPage() {
   const navigate = useNavigate();
   const { items, toggleWishlist } = useWishlistStore();
-  const { products } = useStoreData();
+  const { products, offers } = useStoreData();
   const { addToCart } = useCartStore();
   
   React.useEffect(() => {
@@ -108,9 +109,7 @@ export function WishlistPage() {
                   firstImg = product.images[0];
                 }
                 
-                const displayPrice = defaultSize.price;
-                const originalPrice = Math.round(displayPrice * 1.4);
-                const discountPercent = Math.round(((originalPrice - displayPrice) / originalPrice) * 100);
+                const { effectivePrice, strikePrice, discountPercent } = calculateProductPricing(product, defaultSize, offers);
 
                 return (
                   <div key={product.id} className={`flex gap-4 md:gap-6 p-4 md:p-6 ${idx !== wishlistProducts.length - 1 ? 'border-b border-gray-100' : ''} hover:bg-white hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.12)] hover:-translate-y-1 transition-all duration-300 relative group cursor-pointer bg-white rounded-3xl m-2 md:m-3 border border-transparent hover:border-gray-100`} onClick={() => navigate(`/product/${product.id}`)}>
@@ -132,9 +131,13 @@ export function WishlistPage() {
                           </div>
 
                           <div className="flex items-baseline gap-2 md:gap-3 mb-2 flex-wrap">
-                            <span className="text-xl md:text-2xl font-black text-gray-900 tracking-tight">₹{displayPrice}</span>
-                            <span className="text-gray-400 line-through text-xs md:text-[14px] font-medium">₹{originalPrice}</span>
-                            <span className="bg-red-50 text-red-600 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide">{discountPercent}% off</span>
+                            <span className="text-xl md:text-2xl font-black text-gray-900 tracking-tight">₹{effectivePrice.toLocaleString('en-IN')}</span>
+                            {strikePrice && strikePrice > effectivePrice && (
+                              <span className="text-gray-400 line-through text-xs md:text-[14px] font-medium">₹{strikePrice.toLocaleString('en-IN')}</span>
+                            )}
+                            {discountPercent > 0 && (
+                              <span className="bg-red-50 text-red-600 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide">{discountPercent}% off</span>
+                            )}
                           </div>
                         </div>
 

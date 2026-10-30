@@ -4,6 +4,7 @@ import { Heart, ShoppingCart, Star, Share2, Image as ImageIcon } from 'lucide-re
 import { useWishlistStore } from '../store/useWishlistStore';
 import { useCartStore } from '../store/useCartStore';
 import { useStoreData } from '../store/useStoreData';
+import { calculateProductPricing } from '../utils/pricing';
 
 // Category-based image fallback — high quality Unsplash images per category keyword
 const CATEGORY_IMAGES = {
@@ -135,29 +136,15 @@ export function ProductCard({ product, layout = 'grid' }) {
 
   const rawImg = getFirstImage(product, parsedSizes);
   const firstImg = getOptimizedThumbnail(rawImg);
-  const displayPrice = getProductPrice(product, parsedSizes);
   const { offers } = useStoreData();
-
-  // Find best matching auto-applied offer for this product
-  const matchingOffer = offers
-    .filter(o => o.offer_type === 'offer' && o.is_active !== false)
-    .find(o => {
-      if (o.scope === 'all') return true;
-      if (o.scope === 'category') {
-        const cats = typeof o.category_ids === 'string' ? JSON.parse(o.category_ids) : (o.category_ids || []);
-        return cats.includes(product?.category);
-      }
-      if (o.scope === 'product') {
-        const pids = typeof o.product_ids === 'string' ? JSON.parse(o.product_ids) : (o.product_ids || []);
-        return pids.includes(product?.id?.toString()) || pids.includes(product?.id);
-      }
-      return false;
-    });
-
-  const offerDiscount = matchingOffer ? parseFloat(matchingOffer.discount_percent) : 0;
-  const effectivePrice = offerDiscount > 0 ? Math.round(displayPrice * (1 - offerDiscount / 100)) : displayPrice;
-  const originalPrice = Number(product?.mrp) || Math.round(displayPrice * 1.4);
-  const discountPercent = originalPrice > 0 ? Math.round(((originalPrice - effectivePrice) / originalPrice) * 100) : 0;
+  const defaultVariant = parsedSizes[0]?.sizes ? parsedSizes[0].sizes[0] : parsedSizes[0];
+  const {
+    effectivePrice,
+    strikePrice,
+    discountPercent,
+    matchingOffer,
+  } = calculateProductPricing(product, defaultVariant, offers);
+  const originalPrice = strikePrice;
   // firstImg always returns a valid URL (category fallback if needed)
   // onError swaps to category fallback in case of network issues
   const fallbackImg = getCategoryFallback(product);

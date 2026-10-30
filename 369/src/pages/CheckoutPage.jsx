@@ -5,6 +5,9 @@ import { Header } from '../components/Header';
 import { useCartStore } from '../store/useCartStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useToastStore } from '../store/useToastStore';
+import { useStoreData } from '../store/useStoreData';
+import { calculateProductPricing } from '../utils/pricing';
+import { calculateDeliveryCharge } from '../config/delivery';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 
@@ -179,10 +182,21 @@ export function CheckoutPage() {
     );
   };
 
-  const discount = location.state?.discount || 0;
+  const { offers } = useStoreData();
+  const checkoutItems = items.map(item => {
+    const pricing = calculateProductPricing(item.product, item.variant, offers);
+    return {
+      ...item,
+      pricing,
+      itemPrice: pricing.effectivePrice,
+    };
+  });
+
+  const subtotal = checkoutItems.reduce((acc, curr) => acc + curr.itemPrice * curr.qty, 0);
+  const discount = Number(location.state?.couponDiscount ?? location.state?.discount ?? 0);
   const couponCode = location.state?.couponCode || '';
-  const baseTotal = getTotal();
-  const grandTotal = Math.max(0, baseTotal - discount);
+  const delivery = calculateDeliveryCharge(subtotal);
+  const grandTotal = Math.max(0, subtotal - discount) + delivery;
 
   const handleProceedToPayment = () => {
     if (!address.name.trim() || !address.line1.trim() || !address.city.trim() || !address.state.trim() || !address.pincode.trim() || !address.mobile.trim()) {
@@ -659,7 +673,7 @@ export function CheckoutPage() {
               </h3>
               
               <div className="space-y-4 max-h-[40vh] overflow-y-auto hide-scrollbar pr-2 mb-6">
-                {items.map(item => (
+                {checkoutItems.map(item => (
                   <div key={`${item.product.id}-${item.variant?.size}`} className="flex gap-4">
                     <div className="w-16 h-16 bg-gray-50 rounded-xl border border-gray-200 p-1 shrink-0">
                       <img src={item.product.images?.[0] || item.product.image_url} alt="" className="w-full h-full object-contain mix-blend-multiply" />
@@ -667,22 +681,32 @@ export function CheckoutPage() {
                     <div>
                       <h4 className="text-sm font-bold text-gray-900 line-clamp-1">{item.product.name}</h4>
                       <p className="text-xs text-gray-600 mt-1">Qty: {item.qty} | {item.variant?.size || 'Std'}</p>
-                      <p className="text-sm font-bold text-brand-blue mt-1">₹{(item.variant?.price || item.product.price) * item.qty}</p>
+                      <p className="text-sm font-bold text-brand-blue mt-1">₹{(item.itemPrice * item.qty).toLocaleString('en-IN')}</p>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="border-t border-dashed border-gray-200 pt-5 mb-6">
-                {discount > 0 && (
-                  <div className="flex justify-between font-bold text-gray-700 text-sm mb-3">
-                    <span>Coupon Discount</span>
-                    <span className="text-green-600">-₹{discount.toFixed(2)}</span>
+              <div className="border-t border-dashed border-gray-200 pt-5 mb-6 space-y-2">
+                <div className="flex justify-between font-bold text-gray-700 text-sm">
+                  <span>Subtotal</span>
+                  <span>₹{subtotal.toLocaleString('en-IN')}</span>
+                </div>
+                {delivery > 0 && (
+                  <div className="flex justify-between font-bold text-gray-700 text-sm">
+                    <span>Delivery Charge</span>
+                    <span>₹{delivery.toLocaleString('en-IN')}</span>
                   </div>
                 )}
-                <div className="flex justify-between font-extrabold text-gray-900 text-xl">
+                {discount > 0 && (
+                  <div className="flex justify-between font-bold text-gray-700 text-sm">
+                    <span>Coupon Discount</span>
+                    <span className="text-green-600">-₹{discount.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-extrabold text-gray-900 text-xl pt-2 border-t border-gray-100">
                   <span>Grand Total</span>
-                  <span className="text-brand-orange">₹{grandTotal.toFixed(2)}</span>
+                  <span className="text-brand-orange">₹{grandTotal.toLocaleString('en-IN')}</span>
                 </div>
               </div>
 

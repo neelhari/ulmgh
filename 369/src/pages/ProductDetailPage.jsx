@@ -8,11 +8,12 @@ import { useWishlistStore } from '../store/useWishlistStore';
 import { useStoreData } from '../store/useStoreData';
 import { motion, AnimatePresence } from 'framer-motion';
 import { openExternalLink } from '../utils/externalLink';
+import { calculateProductPricing } from '../utils/pricing';
 
 export function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { products, loading } = useStoreData();
+  const { products, offers, loading } = useStoreData();
   const product = products.find(p => p.id.toString() === id);
   const { addToCart } = useCartStore();
   const { toggleWishlist, items: wishlistItems } = useWishlistStore();
@@ -23,16 +24,6 @@ export function ProductDetailPage() {
   const [pincode, setPincode] = useState('');
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [imgError, setImgError] = useState(false);
-  const [activeOffers, setActiveOffers] = useState([]);
-
-  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000/api';
-
-  useEffect(() => {
-    fetch(`${BACKEND_URL}/offers/active`)
-      .then(r => r.json())
-      .then(d => setActiveOffers(d.offers || []))
-      .catch(() => {});
-  }, []);
 
   const isWishlisted = product ? wishlistItems.includes(product.id) : false;
   const relatedProducts = product ? products.filter(p => p.category === product.category && p.id !== product.id).slice(0, 10) : [];
@@ -109,29 +100,15 @@ export function ProductDetailPage() {
     }
   };
 
-  const originalPrice = Number(product?.mrp) || (selectedSizeObj ? Math.round(selectedSizeObj.price * 1.4) : 0);
-
-  // Find best matching auto-applied offer for this product
-  const matchingOffer = activeOffers
-    .filter(o => o.offer_type === 'offer' && o.is_active !== false)
-    .find(o => {
-      if (o.scope === 'all') return true;
-      if (o.scope === 'category') {
-        const cats = typeof o.category_ids === 'string' ? JSON.parse(o.category_ids) : (o.category_ids || []);
-        return cats.includes(product?.category);
-      }
-      if (o.scope === 'product') {
-        const pids = typeof o.product_ids === 'string' ? JSON.parse(o.product_ids) : (o.product_ids || []);
-        return pids.includes(product?.id?.toString()) || pids.includes(product?.id);
-      }
-      return false;
-    });
-
-  const offerDiscount = matchingOffer ? parseFloat(matchingOffer.discount_percent) : 0;
-  const effectivePrice = offerDiscount > 0
-    ? Math.round(selectedSizeObj.price * (1 - offerDiscount / 100))
-    : selectedSizeObj.price;
-  const discountPercent = originalPrice > 0 ? Math.round(((originalPrice - effectivePrice) / originalPrice) * 100) : 0;
+  const {
+    basePrice,
+    effectivePrice,
+    strikePrice,
+    discountPercent,
+    offerDiscount,
+    matchingOffer,
+  } = calculateProductPricing(product, selectedSizeObj, offers);
+  const originalPrice = strikePrice;
 
   let customAttrs = {};
   try {
@@ -348,7 +325,7 @@ export function ProductDetailPage() {
               <span className="text-green-600 text-lg">🏷️</span>
               <div>
                 <p className="text-green-700 font-bold text-sm">{matchingOffer.name || `${offerDiscount}% Off Applied`}</p>
-                <p className="text-green-600 text-xs">You save ₹{(selectedSizeObj.price - effectivePrice).toLocaleString()} with this offer</p>
+                <p className="text-green-600 text-xs">You save ₹{(basePrice - effectivePrice).toLocaleString()} with this offer</p>
               </div>
             </div>
           )}

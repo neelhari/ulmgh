@@ -12,7 +12,58 @@ function getDeliveryCharge(subtotal) {
 }
 
 /**
- * Calculates order pricing directly from DB products and coupons.
+ * Finds the highest-priority active automatic offer applicable to a product.
+ * @param {Object} product
+ * @param {Array} offers
+ * @returns {Object|null}
+ */
+function findMatchingOffer(product, offers = []) {
+  if (!product || !Array.isArray(offers) || offers.length === 0) return null;
+
+  const now = new Date();
+
+  const eligibleOffers = offers.filter((o) => {
+    if (!o) return false;
+    if (o.offer_type !== 'offer') return false;
+    if (o.is_active === false) return false;
+    if (o.expires_at && new Date(o.expires_at) <= now) return false;
+
+    if (o.scope === 'all') return true;
+
+    if (o.scope === 'category') {
+      let cats = [];
+      try {
+        cats = typeof o.category_ids === 'string' ? JSON.parse(o.category_ids) : (o.category_ids || []);
+      } catch (e) {
+        cats = [];
+      }
+      return cats.map(String).includes(String(product.category));
+    }
+
+    if (o.scope === 'product') {
+      let pids = [];
+      try {
+        pids = typeof o.product_ids === 'string' ? JSON.parse(o.product_ids) : (o.product_ids || []);
+      } catch (e) {
+        pids = [];
+      }
+      return pids.map(String).includes(String(product.id));
+    }
+
+    return false;
+  });
+
+  if (eligibleOffers.length === 0) return null;
+
+  return eligibleOffers.reduce((best, curr) => {
+    const currPct = parseFloat(curr.discount_percent) || 0;
+    const bestPct = parseFloat(best.discount_percent) || 0;
+    return currPct > bestPct ? curr : best;
+  }, eligibleOffers[0]);
+}
+
+/**
+ * Calculates order pricing directly from DB products, active automatic offers, and coupons.
  * @param {Array} items - List of cart items
  * @param {string} couponCode - Optional coupon code
  * @param {object} [dbClient=pool] - Optional pg client for transactions
@@ -23,6 +74,17 @@ async function calculateOrder(items, couponCode = '', dbClient = pool) {
     const err = new Error('Cart is empty');
     err.statusCode = 400;
     throw err;
+  }
+
+  // 1. Fetch active automatic offers
+  let activeOffers = [];
+  try {
+    const offersRes = await dbClient.query(
+      "SELECT * FROM offers WHERE offer_type = 'offer' AND is_active = true AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY created_at DESC"
+    );
+    activeOffers = offersRes.rows || [];
+  } catch (offerErr) {
+    console.warn("Could not fetch active offers for pricing calculation:", offerErr.message);
   }
 
   let subtotal = 0;
@@ -74,23 +136,36 @@ async function calculateOrder(items, couponCode = '', dbClient = pool) {
       }
     }
 
-    subtotal += unitPrice * qty;
+    // Apply active automatic offer to determine unit price
+    const baseUnitPrice = unitPrice;
+    const matchingOffer = findMatchingOffer(dbProduct, activeOffers);
+    const offerDiscount = matchingOffer ? (parseFloat(matchingOffer.discount_percent) || 0) : 0;
+    const effectiveUnitPrice = offerDiscount > 0
+      ? Math.round(baseUnitPrice * (1 - offerDiscount / 100))
+      : baseUnitPrice;
+
+    subtotal += effectiveUnitPrice * qty;
     totalQty += qty;
 
     verifiedItems.push({
       ...item,
       qty,
-      price: unitPrice,
+      price: effectiveUnitPrice,
+      base_price: baseUnitPrice,
+      offer_discount: offerDiscount,
       product: {
         ...item.product,
         id: dbProduct.id,
         name: dbProduct.name,
+        category: dbProduct.category,
         vendor_id: dbProduct.vendor_id,
-        price: unitPrice,
+        price: effectiveUnitPrice,
+        base_price: baseUnitPrice,
+        mrp: dbProduct.mrp,
         image_url: dbProduct.image_url,
       },
       variant: typeof item.variant === 'object' && item.variant !== null
-        ? { ...item.variant, price: unitPrice }
+        ? { ...item.variant, price: effectiveUnitPrice }
         : item.variant,
     });
   }
@@ -184,5 +259,6 @@ module.exports = {
   DELIVERY_CHARGE,
   FREE_DELIVERY_THRESHOLD,
   getDeliveryCharge,
+  findMatchingOffer,
   calculateOrder
 };

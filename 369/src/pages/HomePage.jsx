@@ -5,6 +5,7 @@ import { Header } from '../components/Header';
 import { ProductCard } from '../components/ProductCard';
 import { AdBanner } from '../components/AdBanner';
 import { useStoreData } from '../store/useStoreData';
+import { calculateProductPricing } from '../utils/pricing';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { motion } from 'framer-motion';
@@ -251,7 +252,7 @@ const ShopByStore = () => {
 export function HomePage() {
   const container = useRef(null);
   const navigate = useNavigate();
-  const { products, categories, loading } = useStoreData();
+  const { products, categories, offers, loading } = useStoreData();
   const [banners, setBanners] = React.useState([]);
   const [vendors, setVendors] = React.useState([
     { id: 'v1', business_name: 'ULMGH369 Silks', store_image: 'https://vaarahisilks.com/cdn/shop/articles/Home_Banner_B_1080_x_1650_FHD_49daaf56-8dd9-4544-934c-f17ec4672e1c.jpg?v=1765869118' },
@@ -411,9 +412,7 @@ export function HomePage() {
 
             <div className="flex gap-3 overflow-x-auto hide-scrollbar px-2 pb-2 snap-x">
               {products.length > 0 ? products.slice(0, 5).map((p, idx) => {
-                const discounts = [40, 18, 50, 25, 30];
-                const off = discounts[idx] || 20;
-                const originalPrice = Math.round(p.price * (1 + (off / 100)));
+                const { effectivePrice, strikePrice, discountPercent, matchingOffer } = calculateProductPricing(p, null, offers);
                 return (
                   <div key={p.id} className="w-[145px] md:w-[180px] shrink-0 snap-start h-full pb-2">
                     <motion.div
@@ -425,10 +424,12 @@ export function HomePage() {
                       onClick={() => navigate(`/product/${p.id}`)}
                     >
                       {/* Discount Tag */}
-                      <div className="absolute top-0 left-0 bg-[#16a34a] text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-br-lg z-10 flex items-center gap-0.5 shadow-sm">
-                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
-                         {off}%
-                      </div>
+                      {discountPercent > 0 && (
+                        <div className="absolute top-0 left-0 bg-[#16a34a] text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-br-lg z-10 flex items-center gap-0.5 shadow-sm">
+                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+                           {discountPercent}%
+                        </div>
+                      )}
                       
                       <div className="h-[140px] md:h-[160px] bg-[#f8fafc] relative flex items-center justify-center border-b border-gray-100 overflow-hidden">
                          <img src={p.image_url || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=500&q=80'} alt={p.name} 
@@ -445,20 +446,18 @@ export function HomePage() {
                          <div className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-md w-fit mb-1.5 border border-gray-200">1 Unit</div>
                          <h4 className="text-[13px] font-bold text-gray-800 line-clamp-2 leading-tight mb-2 flex-1">{p.name}</h4>
                          <div className="flex items-center gap-1.5 mb-2 mt-auto">
-                            <span className="text-[11px] text-gray-400 font-bold line-through">₹{originalPrice}</span>
-                            <span className="text-[16px] font-black text-gray-900 tracking-tight">₹{p.price}</span>
+                            {strikePrice && strikePrice > effectivePrice && (
+                              <span className="text-[11px] text-gray-400 font-bold line-through">₹{strikePrice.toLocaleString('en-IN')}</span>
+                            )}
+                            <span className="text-[16px] font-black text-gray-900 tracking-tight">₹{effectivePrice.toLocaleString('en-IN')}</span>
                          </div>
-                         {/* XtraSaver */}
-                         <div className="bg-[#fef08a] rounded-md px-2 py-1 flex items-center justify-between border border-[#fde047]">
-                            <div className="flex items-center gap-1">
-                              <svg className="w-3.5 h-3.5 text-gray-800" fill="currentColor" viewBox="0 0 20 20"><path d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" fillRule="evenodd"></path></svg>
-                              <span className="text-[10px] font-black text-gray-900">₹{Math.round(p.price * 0.9)}</span>
+                         {/* Offer Tag */}
+                         {matchingOffer && (
+                            <div className="bg-emerald-50 rounded-md px-2 py-1 flex items-center justify-between border border-emerald-200">
+                               <span className="text-[10px] font-extrabold text-emerald-800 truncate pr-1">{matchingOffer.name || 'Special Offer'}</span>
+                               <span className="text-[9px] font-bold text-emerald-700 whitespace-nowrap">{matchingOffer.discount_percent}% OFF</span>
                             </div>
-                            <div className="flex items-center gap-0.5">
-                              <span className="text-[9px] font-bold text-gray-800">XtraSaver</span>
-                              <svg className="w-3 h-3 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/></svg>
-                            </div>
-                         </div>
+                         )}
                       </div>
                     </motion.div>
                   </div>
@@ -547,9 +546,7 @@ export function HomePage() {
                 {/* Slider */}
                 <div className="flex overflow-x-auto gap-3.5 px-4 md:px-8 hide-scrollbar snap-x pb-8">
                   {products.filter(p => p.is_bestseller).slice(0, 8).map((product, i) => {
-                    const price = product.price || 0;
-                    const originalPrice = Math.round(price * 1.53); // Roughly 53% off
-                    const discount = Math.round(((originalPrice - price) / originalPrice) * 100);
+                    const { effectivePrice, strikePrice, discountPercent, matchingOffer } = calculateProductPricing(product, null, offers);
                     
                     return (
                       <div key={product.id} className="w-[145px] md:w-[180px] shrink-0 snap-start h-full">
@@ -562,10 +559,12 @@ export function HomePage() {
                           onClick={() => navigate(`/product/${product.id}`)}
                         >
                           {/* Discount Tag */}
-                          <div className="absolute top-0 left-0 bg-[#16a34a] text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-br-lg z-10 flex items-center gap-0.5 shadow-sm">
-                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
-                             {discount}%
-                          </div>
+                          {discountPercent > 0 && (
+                            <div className="absolute top-0 left-0 bg-[#16a34a] text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-br-lg z-10 flex items-center gap-0.5 shadow-sm">
+                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+                               {discountPercent}%
+                            </div>
+                          )}
                           
                           <div className="h-[140px] md:h-[160px] bg-[#f8fafc] relative flex items-center justify-center border-b border-gray-100 overflow-hidden">
                              <img src={product.image_url || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=500&q=80'} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
@@ -580,20 +579,18 @@ export function HomePage() {
                              <div className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-md w-fit mb-1.5 border border-gray-200">1 Unit</div>
                              <h4 className="text-[13px] font-bold text-gray-800 line-clamp-2 leading-tight mb-2 flex-1">{product.name}</h4>
                              <div className="flex items-center gap-1.5 mb-2 mt-auto">
-                                <span className="text-[11px] text-gray-400 font-bold line-through">₹{originalPrice}</span>
-                                <span className="text-[16px] font-black text-gray-900 tracking-tight">₹{price}</span>
+                                {strikePrice && strikePrice > effectivePrice && (
+                                  <span className="text-[11px] text-gray-400 font-bold line-through">₹{strikePrice.toLocaleString('en-IN')}</span>
+                                )}
+                                <span className="text-[16px] font-black text-gray-900 tracking-tight">₹{effectivePrice.toLocaleString('en-IN')}</span>
                              </div>
-                             {/* XtraSaver */}
-                             <div className="bg-[#fef08a] rounded-md px-2 py-1 flex items-center justify-between border border-[#fde047]">
-                                <div className="flex items-center gap-1">
-                                  <svg className="w-3.5 h-3.5 text-gray-800" fill="currentColor" viewBox="0 0 20 20"><path d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" fillRule="evenodd"></path></svg>
-                                  <span className="text-[10px] font-black text-gray-900">₹{Math.round(price * 0.9)}</span>
+                             {/* Offer Tag */}
+                             {matchingOffer && (
+                                <div className="bg-emerald-50 rounded-md px-2 py-1 flex items-center justify-between border border-emerald-200">
+                                   <span className="text-[10px] font-extrabold text-emerald-800 truncate pr-1">{matchingOffer.name || 'Special Offer'}</span>
+                                   <span className="text-[9px] font-bold text-emerald-700 whitespace-nowrap">{matchingOffer.discount_percent}% OFF</span>
                                 </div>
-                                <div className="flex items-center gap-0.5">
-                                  <span className="text-[9px] font-bold text-gray-800">XtraSaver</span>
-                                  <svg className="w-3 h-3 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/></svg>
-                                </div>
-                             </div>
+                             )}
                           </div>
                         </motion.div>
                       </div>
@@ -644,9 +641,7 @@ export function HomePage() {
                 {/* Slider */}
                 <div className="flex overflow-x-auto gap-3.5 px-4 md:px-8 hide-scrollbar snap-x pb-8">
                   {products.filter(p => p.is_trending).slice(0, 8).map((product, i) => {
-                    const price = product.price || 0;
-                    const originalPrice = Math.round(price * 1.34); // Roughly 34% off
-                    const discount = Math.round(((originalPrice - price) / originalPrice) * 100);
+                    const { effectivePrice, strikePrice, discountPercent, matchingOffer } = calculateProductPricing(product, null, offers);
                     
                     return (
                       <div key={product.id} className="w-[145px] md:w-[180px] shrink-0 snap-start h-full">
@@ -659,10 +654,12 @@ export function HomePage() {
                           onClick={() => navigate(`/product/${product.id}`)}
                         >
                           {/* Discount Tag */}
-                          <div className="absolute top-0 left-0 bg-[#16a34a] text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-br-lg z-10 flex items-center gap-0.5 shadow-sm">
-                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
-                             {discount}%
-                          </div>
+                          {discountPercent > 0 && (
+                            <div className="absolute top-0 left-0 bg-[#16a34a] text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-br-lg z-10 flex items-center gap-0.5 shadow-sm">
+                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+                               {discountPercent}%
+                            </div>
+                          )}
                           
                           <div className="h-[140px] md:h-[160px] bg-[#f8fafc] relative flex items-center justify-center border-b border-gray-100 overflow-hidden">
                              <img src={product.image_url || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=500&q=80'} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
@@ -677,20 +674,18 @@ export function HomePage() {
                              <div className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-md w-fit mb-1.5 border border-gray-200">1 Unit</div>
                              <h4 className="text-[13px] font-bold text-gray-800 line-clamp-2 leading-tight mb-2 flex-1">{product.name}</h4>
                              <div className="flex items-center gap-1.5 mb-2 mt-auto">
-                                <span className="text-[11px] text-gray-400 font-bold line-through">₹{originalPrice}</span>
-                                <span className="text-[16px] font-black text-gray-900 tracking-tight">₹{price}</span>
+                                {strikePrice && strikePrice > effectivePrice && (
+                                  <span className="text-[11px] text-gray-400 font-bold line-through">₹{strikePrice.toLocaleString('en-IN')}</span>
+                                )}
+                                <span className="text-[16px] font-black text-gray-900 tracking-tight">₹{effectivePrice.toLocaleString('en-IN')}</span>
                              </div>
-                             {/* XtraSaver */}
-                             <div className="bg-[#fef08a] rounded-md px-2 py-1 flex items-center justify-between border border-[#fde047]">
-                                <div className="flex items-center gap-1">
-                                  <svg className="w-3.5 h-3.5 text-gray-800" fill="currentColor" viewBox="0 0 20 20"><path d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" fillRule="evenodd"></path></svg>
-                                  <span className="text-[10px] font-black text-gray-900">₹{Math.round(price * 0.9)}</span>
+                             {/* Offer Tag */}
+                             {matchingOffer && (
+                                <div className="bg-emerald-50 rounded-md px-2 py-1 flex items-center justify-between border border-emerald-200">
+                                   <span className="text-[10px] font-extrabold text-emerald-800 truncate pr-1">{matchingOffer.name || 'Special Offer'}</span>
+                                   <span className="text-[9px] font-bold text-emerald-700 whitespace-nowrap">{matchingOffer.discount_percent}% OFF</span>
                                 </div>
-                                <div className="flex items-center gap-0.5">
-                                  <span className="text-[9px] font-bold text-gray-800">XtraSaver</span>
-                                  <svg className="w-3 h-3 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/></svg>
-                                </div>
-                             </div>
+                             )}
                           </div>
                         </motion.div>
                       </div>
