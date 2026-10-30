@@ -203,84 +203,119 @@ router.post('/orders/:id/ship', authMiddleware, adminOnly, async (req, res) => {
   });
 });
 
-// GET /api/admin/warehouse-settings - Fetch registered Shiprocket warehouses and current admin selection
+// GET /api/admin/warehouse-settings - Fetch saved admin warehouse address
 router.get('/warehouse-settings', authMiddleware, adminOnly, async (req, res) => {
   try {
-    // 1. Read the saved setting from database independently of Shiprocket API
-    let selectedNickname = 'suresh';
+    let savedAddress = null;
+    let selectedNickname = null;
+
     try {
-      const settingRes = await pool.query("SELECT value FROM app_settings WHERE key = 'admin_pickup_nickname' LIMIT 1");
-      if (settingRes.rows.length > 0 && settingRes.rows[0].value) {
-        selectedNickname = settingRes.rows[0].value;
+      const addrRes = await pool.query("SELECT value FROM app_settings WHERE key = 'admin_pickup_address' LIMIT 1");
+      if (addrRes.rows.length > 0 && addrRes.rows[0].value) {
+        savedAddress = typeof addrRes.rows[0].value === 'string'
+          ? JSON.parse(addrRes.rows[0].value)
+          : addrRes.rows[0].value;
       }
-    } catch (dbErr) {
-      console.warn('Could not read admin_pickup_nickname from app_settings:', dbErr.message);
+    } catch (e) {
+      console.warn('Could not read admin_pickup_address:', e.message);
     }
 
-    // 2. Fetch live Shiprocket pickup locations with graceful error handling
-    let locations = [];
-    let warning = null;
     try {
-      locations = await shiprocket.getPickupLocations();
-    } catch (srErr) {
-      console.warn('Live Shiprocket pickup locations unavailable:', srErr.message);
-      warning = `Live warehouse locations could not be loaded from Shiprocket: ${srErr.message}`;
+      const nickRes = await pool.query("SELECT value FROM app_settings WHERE key = 'admin_pickup_nickname' LIMIT 1");
+      if (nickRes.rows.length > 0 && nickRes.rows[0].value) {
+        selectedNickname = nickRes.rows[0].value;
+      }
+    } catch (e) {
+      console.warn('Could not read admin_pickup_nickname:', e.message);
     }
-
-    // 3. Do not mark as verified active warehouse unless it matches a real registered Shiprocket location
-    const activeWarehouse = (locations || []).find(l => {
-      const nick = (l.pickup_location || l.pickup_location_nickname || l.nickname || '').toLowerCase();
-      return nick === selectedNickname.toLowerCase();
-    }) || null;
 
     res.json({
       selected_nickname: selectedNickname,
-      locations: locations || [],
-      active_warehouse: activeWarehouse,
-      warning: warning
+      address: savedAddress,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PUT /api/admin/warehouse-settings - Update default admin warehouse
+// PUT /api/admin/warehouse-settings - Save admin pickup warehouse address and sync to Shiprocket
 router.put('/warehouse-settings', authMiddleware, adminOnly, async (req, res) => {
-  const { nickname } = req.body || {};
-  if (!nickname || typeof nickname !== 'string' || !nickname.trim()) {
-    return res.status(400).json({ error: 'Warehouse nickname is required' });
+  const { validatePickupAddress, computeAddressHash } = require('../utils/pickupValidation');
+  const validation = validatePickupAddress(req.body || {});
+  if (!validation.isValid) {
+    return res.status(400).json({ error: validation.error });
   }
 
-  const cleanNickname = nickname.trim();
+  const sanitized = validation.sanitized;
+  const addressHash = computeAddressHash(sanitized);
+
+  // Generate deterministic Shiprocket nickname for the platform warehouse
+  const nickname = `admin_hub_${sanitized.pickup_pincode}`;
+
+  let shiprocketSyncSuccess = false;
+  let shiprocketSyncMessage = null;
 
   try {
-    const locations = await shiprocket.getPickupLocations();
-    const matchedLoc = (locations || []).find(l => {
-      const nick = (l.pickup_location || l.pickup_location_nickname || l.nickname || '').toLowerCase();
-      return nick === cleanNickname.toLowerCase();
-    });
+    // 1. Check if nickname already registered on Shiprocket or register it via addpickup
+    const existingLocations = await shiprocket.getPickupLocations();
+    const existingMatch = (existingLocations || []).find(
+      l => (l.pickup_location || '').toLowerCase() === nickname.toLowerCase()
+    );
 
-    if (!matchedLoc) {
-      return res.status(400).json({
-        error: `Warehouse "${cleanNickname}" was not found in your registered Shiprocket pickup locations.`
-      });
+    if (existingMatch) {
+      shiprocketSyncSuccess = true;
+      shiprocketSyncMessage = 'Linked with existing registered Shiprocket pickup location.';
+    } else {
+      const payload = {
+        pickup_location: nickname,
+        name: sanitized.pickup_contact_name,
+        email: req.user?.email || 'admin@ulmgh369.com',
+        phone: sanitized.pickup_phone,
+        address: sanitized.pickup_line1,
+        address_2: sanitized.pickup_line2 || '',
+        city: sanitized.pickup_city,
+        state: sanitized.pickup_state,
+        country: 'India',
+        pin_code: sanitized.pickup_pincode,
+      };
+
+      await shiprocket.registerPickupLocation(payload);
+      shiprocketSyncSuccess = true;
+      shiprocketSyncMessage = 'Registered with Shiprocket successfully.';
     }
+  } catch (srErr) {
+    console.warn('Shiprocket registration notice:', srErr.message);
+    shiprocketSyncSuccess = false;
+    shiprocketSyncMessage = `Address saved in database, but Shiprocket live registration could not be completed (${srErr.message}).`;
+  }
+
+  try {
+    // 2. Persist in database app_settings
+    await pool.query(
+      `INSERT INTO app_settings (key, value, description, updated_at)
+       VALUES ('admin_pickup_address', $1, 'Admin warehouse pickup address details', NOW())
+       ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+      [JSON.stringify(sanitized)]
+    );
 
     await pool.query(
       `INSERT INTO app_settings (key, value, description, updated_at)
-       VALUES ('admin_pickup_nickname', $1, 'Primary Shiprocket pickup location for platform/admin-owned products', NOW())
+       VALUES ('admin_pickup_nickname', $1, 'Shiprocket pickup nickname for platform/admin-owned products', NOW())
        ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
-      [cleanNickname]
+      [nickname]
     );
 
     res.json({
       success: true,
-      selected_nickname: cleanNickname,
-      warehouse: matchedLoc,
-      message: `Default admin warehouse successfully set to "${cleanNickname}"`
+      selected_nickname: nickname,
+      address: sanitized,
+      shiprocket_synced: shiprocketSyncSuccess,
+      message: shiprocketSyncSuccess
+        ? 'Admin pickup address saved and registered with Shiprocket successfully!'
+        : shiprocketSyncMessage
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  } catch (dbErr) {
+    res.status(500).json({ error: dbErr.message });
   }
 });
 
