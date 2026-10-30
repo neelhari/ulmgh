@@ -271,7 +271,7 @@ function App() {
                       <Route path="vendor-profiles" element={<AdminVendorProfilesPage />} />
                       <Route path="vendor-products" element={<AdminVendorProductsPage />} />
                       <Route path="vendor-wallets" element={<AdminVendorWalletsPage />} />
-                      <Route path="vendor-orders" element={<AdminVendorOrdersPage />} />
+                      <Route path="vendor-orders" element={<Navigate to="/admin/orders?tab=vendor" replace />} />
                       <Route path="support" element={<AdminSupportPage />} />
                       <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
                       <Route path="offers" element={<AdminOffersPage />} />
@@ -301,7 +301,7 @@ function App() {
                       <Route path="vendor-profiles" element={<AdminVendorProfilesPage />} />
                       <Route path="vendor-products" element={<AdminVendorProductsPage />} />
                       <Route path="vendor-wallets" element={<AdminVendorWalletsPage />} />
-                      <Route path="vendor-orders" element={<AdminVendorOrdersPage />} />
+                      <Route path="vendor-orders" element={<Navigate to="/admin/orders?tab=vendor" replace />} />
                       <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
                       <Route path="offers" element={<AdminOffersPage />} />
                       <Route path="advertisements" element={<AdminAdvertisementsPage />} />

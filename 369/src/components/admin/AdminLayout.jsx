@@ -19,7 +19,6 @@ const NAV = [
   { href: "/admin/vendor-profiles", label: "Vendor Profiles", icon: <UserCircle className="w-4 h-4" /> },
   { href: "/admin/vendor-products", label: "Vendor Products", icon: <Store className="w-4 h-4" /> },
   { href: "/admin/vendor-wallets", label: "Vendor Wallets", icon: <Wallet className="w-4 h-4" /> },
-  { href: "/admin/vendor-orders", label: "Vendor Orders", icon: <ShoppingBag className="w-4 h-4" /> },
   // { href: "/admin/support", label: "Support", icon: <HeadphonesIcon className="w-4 h-4" /> },
   { href: "/admin/subscriptions", label: "Subscriptions", icon: <CreditCard className="w-4 h-4" /> },
   { href: "/admin/offers", label: "Offers", icon: <Percent className="w-4 h-4" /> },

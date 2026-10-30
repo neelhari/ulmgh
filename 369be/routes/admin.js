@@ -52,17 +52,30 @@ router.delete('/users/:id', authMiddleware, adminOnly, async (req, res) => {
 // GET /api/admin/orders
 router.get('/orders', authMiddleware, adminOnly, async (req, res) => {
   try {
+    const { type, vendor_id } = req.query;
     const result = await pool.query(
       `SELECT o.*, u.name as user_name, u.email as user_email, u.phone as user_phone
        FROM orders o LEFT JOIN users u ON o.user_id = u.id
        ORDER BY o.created_at DESC`
     );
 
+    const filteredOrders = [];
     for (const ord of result.rows) {
-      ord.fulfillments = await fulfillmentService.getFulfillmentsForOrder(ord.id);
+      let fulfillments = await fulfillmentService.getFulfillmentsForOrder(ord.id);
+
+      if (type === 'admin') {
+        fulfillments = fulfillments.filter(f => f.vendor_id === null);
+        if (fulfillments.length === 0) continue;
+      } else if (type === 'vendor') {
+        fulfillments = fulfillments.filter(f => f.vendor_id !== null && (!vendor_id || String(f.vendor_id) === String(vendor_id)));
+        if (fulfillments.length === 0) continue;
+      }
+
+      ord.fulfillments = fulfillments;
+      filteredOrders.push(ord);
     }
 
-    res.json({ orders: result.rows });
+    res.json({ orders: filteredOrders });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
