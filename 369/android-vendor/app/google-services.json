@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "211244011847",
+    "project_id": "ulmgh-369-e90b5",
+    "storage_bucket": "ulmgh-369-e90b5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:211244011847:android:bfd3d39d33f3c31207bc62",
+        "android_client_info": {
+          "package_name": "com.ulmgh.store"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApUmcix2FJm69XyH_S6p2_dW1ns7Y_2kc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:211244011847:android:bfd3d39d33f3c31207bc62",
+        "android_client_info": {
+          "package_name": "com.ulmgh.vendor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApUmcix2FJm69XyH_S6p2_dW1ns7Y_2kc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -13,6 +13,8 @@ node_modules/
 # Production builds
 dist/
 **/dist/
+dist-vendor/
+**/dist-vendor/
 build/
 **/build/
 
