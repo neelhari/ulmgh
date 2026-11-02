@@ -137,7 +137,11 @@ export function VendorProfilePage() {
         prefill: { name: vendor?.name, email: vendor?.email, contact: vendor?.phone },
         theme: { color: '#fe6603' },
       };
-      new window.Razorpay(options).open();
+      const rzpInstance = new window.Razorpay(options);
+      rzpInstance.on('payment.failed', (response) => {
+        toast.error(`Payment failed: ${response.error?.description || 'Payment was unsuccessful'}`);
+      });
+      rzpInstance.open();
     } catch (err) {
       toast.error(err.message);
     } finally {

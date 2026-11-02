@@ -1,4 +1,6 @@
+const vendorAccountingService = require('../services/vendorAccountingService');
 const router = require('express').Router();
+const crypto = require('crypto');
 const pool = require('../db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -207,29 +209,37 @@ async function sendOTPEmail(email, otp, name) {
   });
 }
 
-async function sendPasswordResetOTPEmail(email, otp, name) {
+async function sendPasswordResetEmail(email, resetUrl, name) {
   await transporter.sendMail({
     from: `"ULMGH369" <${process.env.EMAIL_USER}>`,
     to: email,
-    subject: 'Password Reset OTP for ULMGH369',
+    subject: 'Reset Your Password - ULMGH369',
     html: `
-      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 30px; border: 1px solid #eaeaea; border-radius: 16px; background-color: #ffffff; box-shadow: 0 4px 20px rgba(0,0,0,0.05);">
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px; border: 1px solid #eaeaea; border-radius: 16px; background-color: #ffffff; box-shadow: 0 4px 20px rgba(0,0,0,0.05);">
         <div style="text-align: center; margin-bottom: 24px;">
-          <h1 style="color: #022A21; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 2px;">ULMGH369</h1>
+          <h1 style="color: #022A21; margin: 0; font-size: 26px; font-weight: 800; letter-spacing: 2px;">ULMGH369</h1>
           <p style="color: #fe6603; margin: 4px 0 0; font-size: 11px; font-weight: bold; letter-spacing: 3px; text-transform: uppercase;">Your Choice, From Anywhere.</p>
         </div>
         <div style="border-top: 2px solid #f3f4f6; margin-bottom: 24px;"></div>
-        <h2 style="color: #111827; font-size: 20px; font-weight: 700; margin-bottom: 16px;">Password Reset Request 🔐</h2>
-        <p style="color: #4b5563; font-size: 15px; line-height: 1.5; margin-bottom: 24px;">Hi <strong style="color: #111827;">${name}</strong>,</p>
-        <p style="color: #4b5563; font-size: 15px; line-height: 1.5; margin-bottom: 20px;">Use the following OTP to reset your password:</p>
-        <div style="font-size: 42px; font-weight: 900; color: #fe6603; letter-spacing: 12px; text-align: center; padding: 24px; background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border-radius: 12px; margin: 24px 0; border: 1px solid #fed7aa; box-shadow: inset 0 2px 4px rgba(254,102,3,0.05);">
-          ${otp}
+        <h2 style="color: #111827; font-size: 20px; font-weight: 700; margin-bottom: 12px;">Password Reset Request 🔐</h2>
+        <p style="color: #4b5563; font-size: 15px; line-height: 1.5; margin-bottom: 16px;">Hi <strong style="color: #111827;">${name}</strong>,</p>
+        <p style="color: #4b5563; font-size: 15px; line-height: 1.5; margin-bottom: 24px;">
+          We received a request to reset your ULMGH369 password. Click the button below to set a new password:
+        </p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetUrl}" style="background: linear-gradient(135deg, #fe6603 0%, #ff8534 100%); color: #ffffff; padding: 14px 32px; font-size: 15px; font-weight: 700; text-decoration: none; border-radius: 12px; display: inline-block; box-shadow: 0 4px 15px rgba(254,102,3,0.35);">
+            Reset Password
+          </a>
         </div>
-        <p style="color: #6b7280; font-size: 13px; text-align: center; margin-bottom: 30px; background-color: #f9fafb; padding: 12px; border-radius: 8px;">
-          ⏱️ This OTP is valid for <strong>10 minutes</strong>. Please do not share this code with anyone.
+        <p style="color: #6b7280; font-size: 13px; line-height: 1.5; margin-bottom: 20px; background-color: #f9fafb; padding: 12px 16px; border-radius: 8px;">
+          ⏱️ This link will expire in <strong>1 hour</strong> and can only be used once. If you did not request this, you can safely ignore this email.
+        </p>
+        <p style="color: #9ca3af; font-size: 12px; word-break: break-all; margin-top: 20px;">
+          If the button above does not work, copy and paste this link into your browser:<br>
+          <a href="${resetUrl}" style="color: #fe6603; text-decoration: underline;">${resetUrl}</a>
         </p>
         <div style="border-top: 1px solid #f3f4f6; margin-top: 30px; padding-top: 20px; text-align: center;">
-          <p style="color: #9ca3af; font-size: 12px; margin: 0;">If you didn't request a password reset, you can safely ignore this email.</p>
+          <p style="color: #9ca3af; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} ULMGH369. All rights reserved.</p>
         </div>
       </div>
     `,
@@ -304,58 +314,138 @@ router.post('/verify-otp', authLimiter, async (req, res) => {
   }
 });
 
-// POST /api/auth/forgot-password
-router.post('/forgot-password', authLimiter, async (req, res) => {
+// POST /api/auth/forgot-password (and alias /forgot_password)
+const handleForgotPassword = async (req, res) => {
   const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email required' });
+  if (!email || typeof email !== 'string') return res.status(400).json({ error: 'Valid email required' });
+
+  const normalizedEmail = email.trim().toLowerCase();
 
   try {
-    const user = await pool.query('SELECT name FROM users WHERE email=$1', [email]);
-    if (!user.rows.length) return res.status(404).json({ error: 'User not found' });
+    const userRes = await pool.query('SELECT id, name, email FROM users WHERE LOWER(email)=$1', [normalizedEmail]);
+    if (!userRes.rows.length) {
+      return res.status(404).json({ error: 'No account found with this email address' });
+    }
 
-    const otp = generateOTP();
-    await createOTP(email, otp);
+    const user = userRes.rows[0];
 
-    await sendPasswordResetOTPEmail(email, otp, user.rows[0].name);
-    res.json({ message: 'OTP sent to your email' });
+    // Ensure password_reset_tokens table exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        email VARCHAR(150) NOT NULL,
+        token_hash VARCHAR(255) NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Cryptographically random 32-byte hex token (64 characters)
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour expiry
+
+    // Single-use: remove any active tokens for this user
+    await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1 OR LOWER(email) = $2', [user.id, normalizedEmail]);
+
+    // Store secure SHA-256 hash
+    await pool.query(
+      'INSERT INTO password_reset_tokens (user_id, email, token_hash, expires_at) VALUES ($1, $2, $3, $4)',
+      [user.id, user.email, tokenHash, expiresAt]
+    );
+
+    // Determine domain for reset link
+    const origin = req.headers.origin || req.headers.referer;
+    let baseUrl = process.env.FRONTEND_URL || 'https://ulmgh-369.com';
+    if (origin) {
+      try {
+        baseUrl = new URL(origin).origin;
+      } catch (e) {}
+    }
+    const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+
+    // Send email using existing configuration
+    try {
+      await sendPasswordResetEmail(user.email, resetUrl, user.name || 'Customer');
+    } catch (mailErr) {
+      console.error('[EMAIL ERROR] Failed to send password reset email:', mailErr.message);
+      // In dev or when SMTP fails, log link for testing
+      console.log(`[PASSWORD RESET LINK for ${user.email}]: ${resetUrl}`);
+    }
+
+    res.json({ success: true, message: 'Password reset link sent to your email.' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('forgot-password error:', err);
+    res.status(500).json({ error: 'Server error processing password reset request' });
   }
-});
+};
 
-// POST /api/auth/verify-reset-otp
-router.post('/verify-reset-otp', authLimiter, async (req, res) => {
-  const { email, otp } = req.body;
-  if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
+router.post('/forgot-password', authLimiter, handleForgotPassword);
+router.post('/forgot_password', authLimiter, handleForgotPassword);
+
+// GET /api/auth/verify-reset-token
+router.get('/verify-reset-token', async (req, res) => {
+  const { token } = req.query;
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ valid: false, error: 'Reset token is required' });
+  }
 
   try {
-    const check = await verifyOTP(email, otp, false);
-    if (!check.valid) return res.status(400).json({ error: check.error });
+    const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+    const tokenRes = await pool.query(
+      'SELECT id, email, expires_at FROM password_reset_tokens WHERE token_hash = $1 AND expires_at > NOW()',
+      [tokenHash]
+    );
 
-    res.json({ success: true, message: 'OTP verified' });
+    if (tokenRes.rows.length === 0) {
+      return res.status(400).json({ valid: false, error: 'Password reset link is invalid or has expired' });
+    }
+
+    res.json({ valid: true, email: tokenRes.rows[0].email });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('verify-reset-token error:', err);
+    res.status(500).json({ valid: false, error: 'Server error verifying reset link' });
   }
 });
 
 // POST /api/auth/reset-password
 router.post('/reset-password', async (req, res) => {
-  const { email, otp, newPassword } = req.body;
-  if (!email || !otp || !newPassword) return res.status(400).json({ error: 'Missing required fields' });
+  const { token, newPassword, password } = req.body;
+  const targetPassword = newPassword || password;
+
+  if (!token || !targetPassword) {
+    return res.status(400).json({ error: 'Reset token and new password are required' });
+  }
+
+  if (targetPassword.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+  }
 
   try {
-    const check = await verifyOTP(email, otp, true);
-    if (!check.valid) return res.status(400).json({ error: check.error });
+    const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+    const tokenRes = await pool.query(
+      'SELECT id, user_id, email, expires_at FROM password_reset_tokens WHERE token_hash = $1 AND expires_at > NOW()',
+      [tokenHash]
+    );
 
-    const hash = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE users SET password_hash=$1 WHERE email=$2', [hash, email]);
+    if (tokenRes.rows.length === 0) {
+      return res.status(400).json({ error: 'Password reset link is invalid or has expired. Please request a new one.' });
+    }
 
-    res.json({ success: true, message: 'Password reset successfully' });
+    const resetRecord = tokenRes.rows[0];
+    const hash = await bcrypt.hash(targetPassword, 10);
+
+    // Update existing user's password securely
+    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, resetRecord.user_id]);
+
+    // Single-use: delete the used token immediately
+    await pool.query('DELETE FROM password_reset_tokens WHERE id=$1', [resetRecord.id]);
+
+    res.json({ success: true, message: 'Password reset successfully. You can now log in.' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('reset-password error:', err);
+    res.status(500).json({ error: 'Server error resetting password' });
   }
 });
 
@@ -602,27 +692,10 @@ router.post('/orders', authMiddleware, validate(orderSchema), async (req, res) =
     const addressJson = JSON.stringify(address);
     const orderStatus = pMethod === 'cod' ? 'pending' : 'paid';
 
-    // Prepare vendor earnings
-    const vendorData = {};
-    for (const item of verifiedItems) {
-      if (item.product && item.product.vendor_id) {
-        const vid = item.product.vendor_id;
-        const subCheck = await pool.query(
-          'SELECT subscription_expires_at FROM vendors WHERE id=$1',
-          [vid]
-        );
-        const expiry = subCheck.rows[0]?.subscription_expires_at;
-        if (expiry && new Date(expiry) < new Date()) continue;
-        const amt = item.qty * item.price;
-        if (!vendorData[vid]) vendorData[vid] = { total: 0, items: [] };
-        vendorData[vid].total += amt;
-        vendorData[vid].items.push(item);
-      }
-    }
-
     // Atomic transaction: Order insert + Stock deduction + Vendor wallet credit
     const client = await pool.connect();
     let result;
+    let vendorAccounting = {};
     try {
       await client.query('BEGIN');
 
@@ -670,17 +743,15 @@ router.post('/orders', authMiddleware, validate(orderSchema), async (req, res) =
         }
       }
 
-      // Credit vendor wallets and record transactions within the transaction
-      for (const [vid, data] of Object.entries(vendorData)) {
-        await client.query('UPDATE vendors SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2', [data.total, vid]);
-        await client.query(
-          'INSERT INTO vendor_transactions (vendor_id, type, amount, order_number, description) VALUES ($1, $2, $3, $4, $5)',
-          [vid, 'credit', data.total, orderNumber, `Order ${orderNumber} - ${data.items.length} item(s)`]
-        );
-      }
+      // Vendor Accounting: Verify subscriptions, calculate commission, recover debt & credit net earnings
+      vendorAccounting = await vendorAccountingService.processOrderVendorAccounting({
+        orderNumber,
+        verifiedItems,
+        client
+      });
 
-      // Phase 3: Atomically create vendor fulfillments
-      await fulfillmentService.createFulfillmentsForOrder(result.rows[0], verifiedItems, client);
+      // Phase 3: Atomically create vendor fulfillments with commission tracking
+      await fulfillmentService.createFulfillmentsForOrder(result.rows[0], verifiedItems, client, vendorAccounting);
 
       await client.query('COMMIT');
     } catch (txErr) {
@@ -700,10 +771,10 @@ router.post('/orders', authMiddleware, validate(orderSchema), async (req, res) =
     }
 
     // Send vendor notifications
-    for (const [vid, data] of Object.entries(vendorData)) {
+    for (const [vid, data] of Object.entries(vendorAccounting)) {
       const vendorRes = await pool.query('SELECT name, email FROM vendors WHERE id = $1', [vid]);
       if (vendorRes.rows[0]) {
-        sendOrderEmailToVendor(vendorRes.rows[0].email, vendorRes.rows[0].name, orderNumber, data.items, data.total, address, pMethod);
+        sendOrderEmailToVendor(vendorRes.rows[0].email, vendorRes.rows[0].name, orderNumber, data.items, data.grossAmount, address, pMethod);
       }
     }
     

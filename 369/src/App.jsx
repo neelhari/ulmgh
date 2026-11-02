@@ -22,6 +22,7 @@ import { WishlistPage } from './pages/WishlistPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
@@ -246,6 +247,7 @@ function App() {
             {/* Auth pages — no layout */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             {/* Vendor, Admin, and Support routes — web only, hidden in Capacitor native app */}
             {!Capacitor.isNativePlatform() && (
               <>

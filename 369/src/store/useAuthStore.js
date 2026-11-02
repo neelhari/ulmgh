@@ -57,35 +57,36 @@ export const useAuthStore = create((set, get) => ({
   forgotPassword: async (email) => {
     set({ loading: true, error: null });
     try {
-      await api.post('/auth/forgot-password', { email });
+      const { data } = await api.post('/auth/forgot-password', { email });
       set({ loading: false });
-      return { success: true };
+      return { success: true, message: data.message };
     } catch (err) {
-      const error = err.response?.data?.error || 'Failed to send OTP';
+      const error = err.response?.data?.error || 'Failed to send reset link';
       set({ loading: false, error });
       return { success: false, error };
     }
   },
 
-  verifyResetOtp: async (email, otp) => {
-    set({ loading: true, error: null });
+  verifyResetToken: async (token) => {
     try {
-      await api.post('/auth/verify-reset-otp', { email, otp });
-      set({ loading: false });
-      return { success: true };
+      const { data } = await api.get('/auth/verify-reset-token', { params: { token } });
+      return { success: true, email: data.email };
     } catch (err) {
-      const error = err.response?.data?.error || 'Invalid OTP';
-      set({ loading: false, error });
+      const error = err.response?.data?.error || 'Invalid or expired reset link';
       return { success: false, error };
     }
   },
 
-  resetPassword: async (email, otp, newPassword) => {
+  resetPassword: async (tokenOrEmail, newPasswordOrOtp, maybeNewPassword) => {
     set({ loading: true, error: null });
     try {
-      await api.post('/auth/reset-password', { email, otp, newPassword });
+      // Support email-link flow: resetPassword(token, newPassword)
+      const payload = maybeNewPassword
+        ? { email: tokenOrEmail, otp: newPasswordOrOtp, newPassword: maybeNewPassword }
+        : { token: tokenOrEmail, newPassword: newPasswordOrOtp };
+      const { data } = await api.post('/auth/reset-password', payload);
       set({ loading: false });
-      return { success: true };
+      return { success: true, message: data.message };
     } catch (err) {
       const error = err.response?.data?.error || 'Password reset failed';
       set({ loading: false, error });

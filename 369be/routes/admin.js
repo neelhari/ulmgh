@@ -145,6 +145,23 @@ router.put('/orders/:id/status', authMiddleware, adminOnly, async (req, res) => 
             );
           }
         }
+
+        // Reverse any vendor credits for legacy order without fulfillment packages
+        if (order.order_number) {
+          const vCredits = await client.query(
+            'SELECT DISTINCT vendor_id FROM vendor_transactions WHERE order_number = $1 AND type = $2',
+            [order.order_number, 'credit']
+          );
+          for (const row of vCredits.rows) {
+            const vendorAccountingService = require('../services/vendorAccountingService');
+            await vendorAccountingService.reverseVendorOrderCredit({
+              vendorId: row.vendor_id,
+              orderNumber: order.order_number,
+              reason: 'Order cancelled by Admin',
+              client
+            });
+          }
+        }
       }
     }
 
@@ -539,12 +556,28 @@ router.delete('/categories/:id', authMiddleware, adminOnly, async (req, res) => 
 router.get('/vendors', authMiddleware, adminOnly, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, name, store_name, email, phone, address, status, wallet_balance, created_at,
-             pickup_contact_name, pickup_phone, pickup_line1, pickup_line2,
-             pickup_city, pickup_state, pickup_pincode, shiprocket_pickup_nickname,
-             is_pickup_synced, shiprocket_pickup_id, pickup_synced_at, pickup_sync_error, pickup_version
-      FROM vendors 
-      ORDER BY created_at DESC
+      SELECT v.id, v.name, v.store_name, v.email, v.phone, v.address, v.status, v.wallet_balance, v.created_at,
+             COALESCE(v.outstanding_debt, 0) as outstanding_debt,
+             COALESCE(stats.gross_sales, 0) as total_gross_sales,
+             COALESCE(stats.commission_earned, 0) as total_commission_earned,
+             COALESCE(stats.net_earnings, 0) as total_net_earnings,
+             COALESCE(stats.legacy_sales, 0) as legacy_sales,
+             COALESCE(stats.commission_tracked_sales, 0) as commission_tracked_sales,
+             v.pickup_contact_name, v.pickup_phone, v.pickup_line1, v.pickup_line2,
+             v.pickup_city, v.pickup_state, v.pickup_pincode, v.shiprocket_pickup_nickname,
+             v.is_pickup_synced, v.shiprocket_pickup_id, v.pickup_synced_at, v.pickup_sync_error, v.pickup_version
+      FROM vendors v
+      LEFT JOIN LATERAL (
+        SELECT 
+          COALESCE(SUM(COALESCE(gross_amount, amount)), 0) as gross_sales,
+          COALESCE(SUM(commission_amount), 0) as commission_earned,
+          COALESCE(SUM(COALESCE(net_amount, amount)), 0) as net_earnings,
+          COALESCE(SUM(CASE WHEN gross_amount IS NULL THEN amount ELSE 0 END), 0) as legacy_sales,
+          COALESCE(SUM(CASE WHEN gross_amount IS NOT NULL THEN gross_amount ELSE 0 END), 0) as commission_tracked_sales
+        FROM vendor_transactions
+        WHERE vendor_id = v.id AND type = 'credit'
+      ) stats ON true
+      ORDER BY v.created_at DESC
     `);
     res.json({ vendors: result.rows });
   } catch (err) {
@@ -632,31 +665,98 @@ router.get('/vendor-orders', authMiddleware, adminOnly, async (req, res) => {
 });
 
 router.post('/vendors/:id/payout', authMiddleware, adminOnly, async (req, res) => {
-  const { amount, gender } = req.body;
-  if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+  const { amount } = req.body;
+  const idempotencyKey = (
+    req.headers['idempotency-key'] ||
+    req.body.idempotency_key ||
+    req.body.requestId ||
+    req.body.payout_id ||
+    ''
+  ).toString().trim();
 
+  // 1. Validate positive monetary amount with at most 2 decimal places
+  if (amount === undefined || amount === null || amount === '') {
+    return res.status(400).json({ error: 'Payout amount is required' });
+  }
+  const amountStr = String(amount).trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(amountStr)) {
+    return res.status(400).json({ error: 'Amount must be a positive number with at most 2 decimal places' });
+  }
+  const payoutAmount = Math.round(parseFloat(amountStr) * 100) / 100;
+  if (isNaN(payoutAmount) || payoutAmount <= 0 || !isFinite(payoutAmount)) {
+    return res.status(400).json({ error: 'Amount must be greater than zero' });
+  }
+
+  const client = await pool.connect();
   try {
-    // Deduct amount from vendor wallet
-    const vendorRes = await pool.query('SELECT wallet_balance FROM vendors WHERE id=$1', [req.params.id]);
-    if (vendorRes.rows.length === 0) return res.status(404).json({ error: 'Vendor not found' });
-    
-    let currentBalance = parseFloat(vendorRes.rows[0].wallet_balance) || 0;
-    if (currentBalance < amount) return res.status(400).json({ error: 'Insufficient wallet balance' });
+    await client.query('BEGIN');
 
-    const result = await pool.query(
-      'UPDATE vendors SET wallet_balance = wallet_balance - $1 WHERE id = $2 RETURNING id, name, wallet_balance',
-      [amount, req.params.id]
+    // 2. Lock vendor row for update to serialize concurrent payout requests
+    const vendorRes = await client.query(
+      'SELECT id, name, store_name, wallet_balance FROM vendors WHERE id=$1 FOR UPDATE',
+      [req.params.id]
+    );
+    if (vendorRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Vendor not found' });
+    }
+
+    const vendor = vendorRes.rows[0];
+
+    // 3. Idempotency check: if an idempotency key was supplied, check if already processed
+    if (idempotencyKey) {
+      const existingTx = await client.query(
+        'SELECT * FROM vendor_transactions WHERE vendor_id = $1 AND order_number = $2 AND type = $3',
+        [vendor.id, idempotencyKey, 'debit']
+      );
+      if (existingTx.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.json({
+          message: 'Payout already processed',
+          vendor,
+          alreadyProcessed: true,
+          transaction: existingTx.rows[0]
+        });
+      }
+    }
+
+    // 4. Validate available balance
+    const currentBalance = parseFloat(vendor.wallet_balance || 0);
+    if (currentBalance < payoutAmount) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: `Insufficient wallet balance. Available: ₹${currentBalance.toLocaleString()}, Requested: ₹${payoutAmount.toLocaleString()}`
+      });
+    }
+
+    // 5. Atomic deduction with safety guard
+    const updateRes = await client.query(
+      'UPDATE vendors SET wallet_balance = wallet_balance - $1 WHERE id = $2 AND wallet_balance >= $1 RETURNING id, name, store_name, wallet_balance',
+      [payoutAmount, vendor.id]
     );
 
-    // Record the payout transaction
-    await pool.query(
-      'INSERT INTO vendor_transactions (vendor_id, type, amount, description) VALUES ($1, $2, $3, $4)',
-      [req.params.id, 'debit', amount, `Payout of ₹${parseFloat(amount).toLocaleString()} processed to bank account`]
+    if (updateRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Insufficient wallet balance or concurrent payout conflict' });
+    }
+
+    // 6. Record payout in vendor_transactions within the same transaction
+    const desc = `Payout of ₹${payoutAmount.toLocaleString()} processed to bank account`;
+    await client.query(
+      `INSERT INTO vendor_transactions 
+         (vendor_id, type, amount, order_number, description, gross_amount, commission_percent, commission_amount, net_amount, debt_recovered) 
+       VALUES ($1, 'debit', $2, $3, $4, NULL, NULL, NULL, $2, 0)`,
+      [vendor.id, payoutAmount, idempotencyKey || null, desc]
     );
 
-    res.json({ message: 'Payout successful', vendor: result.rows[0] });
+    await client.query('COMMIT');
+    res.json({ message: 'Payout successful', vendor: updateRes.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await client.query('ROLLBACK');
+    console.error('Payout processing error:', err);
+    res.status(err.statusCode || 500).json({ error: err.message || 'Server error' });
+  } finally {
+    client.release();
   }
 });
 

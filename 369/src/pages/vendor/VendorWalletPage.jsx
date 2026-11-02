@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wallet, IndianRupee, Landmark, ArrowUpRight, ArrowDownLeft, Clock } from 'lucide-react';
+import { Wallet, IndianRupee, Landmark, ArrowUpRight, ArrowDownLeft, Clock, AlertCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
@@ -33,9 +33,22 @@ export function VendorWalletPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4 sm:mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">Virtual Wallet</h1>
-          <p className="text-gray-500 mt-1 text-xs sm:text-sm font-medium">Track your earnings, payouts, and transaction history.</p>
+          <p className="text-gray-500 mt-1 text-xs sm:text-sm font-medium">Track your earnings, platform commissions, payouts, and transaction history.</p>
         </div>
       </div>
+
+      {parseFloat(vendor?.outstanding_debt || 0) > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-900 text-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-xs">
+          <div>
+            <p className="font-bold flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Outstanding Debt:</span>
+              <span className="text-amber-800 font-extrabold text-base">₹{parseFloat(vendor.outstanding_debt).toLocaleString()}</span>
+            </p>
+            <p className="text-xs text-amber-700 mt-0.5">This balance arises from cancelled order earnings after payout and will be automatically settled against your next order earnings.</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-6">
         {/* Balance Card */}
@@ -64,7 +77,7 @@ export function VendorWalletPage() {
             <ArrowDownLeft className="w-6 h-6 sm:w-8 sm:h-8" />
           </div>
           <div className="z-10 min-w-0">
-            <p className="text-[11px] sm:text-sm font-bold text-gray-400 tracking-wide uppercase mb-0.5 sm:mb-1">Total Earned</p>
+            <p className="text-[11px] sm:text-sm font-bold text-gray-400 tracking-wide uppercase mb-0.5 sm:mb-1">Total Earned (Net)</p>
             <h3 className="text-xl sm:text-3xl font-extrabold text-green-600 tracking-tight truncate">
               {loading ? '...' : `₹${totalCredits.toLocaleString()}`}
             </h3>
@@ -113,7 +126,7 @@ export function VendorWalletPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-bold text-gray-900 text-xs sm:text-base mb-0.5 truncate">
-                      {txn.type === 'credit' ? 'Order Earning' : 'Payout'}
+                      {txn.type === 'credit' ? 'Order Earning' : txn.type === 'reversal' ? 'Order Reversal' : 'Payout'}
                     </p>
                     <p className="text-xs text-gray-500 truncate flex items-center gap-1.5">
                       {txn.order_number && (
@@ -129,6 +142,15 @@ export function VendorWalletPage() {
                   <p className={`font-extrabold text-sm sm:text-xl tracking-tight ${txn.type === 'credit' ? 'text-green-600' : 'text-red-500'}`}>
                     {txn.type === 'credit' ? '+' : '-'}₹{parseFloat(txn.amount || 0).toLocaleString()}
                   </p>
+                  {txn.commission_amount != null ? (
+                    <p className="text-[10px] sm:text-xs text-gray-400 font-medium">
+                      Net (Gross: ₹{parseFloat(txn.gross_amount || 0).toLocaleString()} | Comm: ₹{parseFloat(txn.commission_amount || 0).toLocaleString()})
+                    </p>
+                  ) : txn.type === 'credit' ? (
+                    <p className="text-[10px] sm:text-xs text-slate-400 font-medium italic">
+                      Legacy uncommissioned sale
+                    </p>
+                  ) : null}
                   <p className="text-[10px] sm:text-xs font-semibold text-gray-400 mt-0.5 uppercase tracking-wider">
                     {new Date(txn.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </p>

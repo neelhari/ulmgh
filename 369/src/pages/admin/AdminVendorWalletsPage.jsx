@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Wallet, IndianRupee, Send, Clock, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Search, Wallet, IndianRupee, Send, Clock, ArrowUpRight, ArrowDownLeft, AlertCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
@@ -55,13 +55,18 @@ export function AdminVendorWalletsPage() {
     setPayoutLoading(true);
     try {
       const token = localStorage.getItem('token');
+      const payoutKey = `payout_${selectedVendor.id}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const res = await fetch(`${BACKEND_URL}/admin/vendors/${selectedVendor.id}/payout`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Idempotency-Key': payoutKey
         },
-        body: JSON.stringify({ amount: parseFloat(payoutAmount) })
+        body: JSON.stringify({ 
+          amount: parseFloat(payoutAmount),
+          idempotency_key: payoutKey 
+        })
       });
       
       const data = await res.json();
@@ -87,7 +92,7 @@ export function AdminVendorWalletsPage() {
     <div className="space-y-6 relative">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Vendor Wallets & Payouts</h1>
-        <p className="text-gray-500 mt-1">Manage vendor earnings and process payouts.</p>
+        <p className="text-gray-500 mt-1">Manage vendor earnings, review commission metrics, and safely process payouts.</p>
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
@@ -114,6 +119,12 @@ export function AdminVendorWalletsPage() {
         ) : (
           filteredVendors.map(vendor => {
             const balance = parseFloat(vendor.wallet_balance || 0);
+            const grossSales = parseFloat(vendor.total_gross_sales || 0);
+            const commEarned = parseFloat(vendor.total_commission_earned || 0);
+            const netEarnings = parseFloat(vendor.total_net_earnings || 0);
+            const legacySales = parseFloat(vendor.legacy_sales || 0);
+            const debt = parseFloat(vendor.outstanding_debt || 0);
+
             return (
               <div key={vendor.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col h-full">
                 <div className="flex items-start justify-between mb-4">
@@ -126,7 +137,42 @@ export function AdminVendorWalletsPage() {
                   </div>
                 </div>
                 
-                <div className="mt-auto pt-6 border-t border-gray-100">
+                <div className="grid grid-cols-3 gap-2 py-3 border-t border-b border-gray-50 my-2 text-xs">
+                  <div>
+                    <span className="text-gray-400 block">Gross Sales</span>
+                    <span className="font-semibold text-gray-700">₹{grossSales.toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block">Platform Comm</span>
+                    <span className="font-semibold text-emerald-600">₹{commEarned.toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block">Net Earned</span>
+                    <span className="font-semibold text-gray-900">₹{netEarnings.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {legacySales > 0 && (
+                  <div className="bg-slate-50 text-slate-700 text-xs px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between border border-slate-200">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Legacy Sales:</span>
+                    </span>
+                    <span className="font-medium text-slate-800">₹{legacySales.toLocaleString()} (uncommissioned)</span>
+                  </div>
+                )}
+
+                {debt > 0 && (
+                  <div className="bg-amber-50 text-amber-800 text-xs px-2.5 py-1.5 rounded-lg font-medium mb-3 flex items-center justify-between border border-amber-200">
+                    <span className="flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Outstanding Debt:</span>
+                    </span>
+                    <span className="font-bold">₹{debt.toLocaleString()}</span>
+                  </div>
+                )}
+
+                <div className="mt-auto pt-4 border-t border-gray-100">
                   <p className="text-sm text-gray-500 mb-1">Available Balance</p>
                   <div className="flex items-end justify-between">
                     <span className="text-3xl font-bold text-gray-900">₹{balance.toLocaleString()}</span>
@@ -149,7 +195,7 @@ export function AdminVendorWalletsPage() {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
           <Clock className="w-5 h-5 text-gray-400" />
-          <h3 className="text-lg font-bold text-gray-900">Payout History</h3>
+          <h3 className="text-lg font-bold text-gray-900">Payout & Transaction History</h3>
         </div>
 
         {loading ? (
@@ -158,7 +204,7 @@ export function AdminVendorWalletsPage() {
           <div className="p-8 text-center text-gray-400">
             <Send className="w-12 h-12 mx-auto mb-3 text-gray-200" />
             <p className="text-gray-500 font-medium">No payouts processed yet</p>
-            <p className="text-sm text-gray-400 mt-1">Payouts will appear here once you process them.</p>
+            <p className="text-sm text-gray-400 mt-1">Payouts and ledger records will appear here.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -179,15 +225,24 @@ export function AdminVendorWalletsPage() {
                       <p className="font-semibold text-gray-900">{p.vendor_name || p.store_name || `Vendor #${p.vendor_id}`}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${p.type === 'debit' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                        {p.type === 'debit' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownLeft className="w-3 h-3" />}
-                        {p.type === 'debit' ? 'Payout' : 'Credit'}
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${p.type === 'debit' ? 'bg-red-50 text-red-600' : p.type === 'reversal' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'}`}>
+                        {p.type === 'debit' || p.type === 'reversal' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownLeft className="w-3 h-3" />}
+                        {p.type === 'debit' ? 'Payout' : p.type === 'reversal' ? 'Reversal' : 'Credit'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`font-bold ${p.type === 'debit' ? 'text-red-600' : 'text-green-600'}`}>
-                        {p.type === 'debit' ? '-' : '+'}₹{parseFloat(p.amount || 0).toLocaleString()}
+                      <span className={`font-bold ${p.type === 'debit' || p.type === 'reversal' ? 'text-red-600' : 'text-green-600'}`}>
+                        {p.type === 'debit' || p.type === 'reversal' ? '-' : '+'}₹{parseFloat(p.amount || 0).toLocaleString()}
                       </span>
+                      {p.commission_amount != null ? (
+                        <span className="text-[10px] text-gray-400 block font-normal">
+                          Gross: ₹{parseFloat(p.gross_amount || 0).toLocaleString()} | Comm ({p.commission_percent || 0}%): ₹{parseFloat(p.commission_amount || 0).toLocaleString()}
+                        </span>
+                      ) : p.type === 'credit' ? (
+                        <span className="text-[10px] text-slate-400 block font-normal italic">
+                          Legacy (uncommissioned)
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-6 py-4 text-gray-500 text-xs">
                       {p.order_number && <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 font-medium mr-1">{p.order_number}</span>}
@@ -220,7 +275,7 @@ export function AdminVendorWalletsPage() {
                 <input 
                   type="number" 
                   required
-                  min="1"
+                  min="0.01"
                   max={selectedVendor.wallet_balance || 0}
                   step="0.01"
                   value={payoutAmount}

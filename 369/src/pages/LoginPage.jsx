@@ -65,27 +65,12 @@ export function LoginPage() {
     e.preventDefault(); clearMessages();
     if (!form.email) return setLocalError('Please enter your email');
     const res = await forgotPassword(form.email);
-    if (res.success) { setSuccessMsg('OTP sent to your email.'); setStep('forgot_otp'); }
-    else setLocalError(res.error);
-  };
-
-  const handleForgotOtp = async (e) => {
-    e.preventDefault(); clearMessages();
-    const res = await verifyResetOtp(form.email, form.otp);
-    if (res.success) { setSuccessMsg('OTP verified. Set your new password.'); setStep('forgot_reset'); }
-    else setLocalError(res.error);
-  };
-
-  const handleForgotReset = async (e) => {
-    e.preventDefault(); clearMessages();
-    if (form.newPassword !== form.confirmPassword) return setLocalError('Passwords do not match');
-    if (form.newPassword.length < 6) return setLocalError('Password must be at least 6 characters');
-    const res = await resetPassword(form.email, form.otp, form.newPassword);
     if (res.success) {
-      setSuccessMsg('Password reset! You can now login.');
-      setStep('login');
-      setForm({ ...form, password: '', otp: '', newPassword: '', confirmPassword: '' });
-    } else setLocalError(res.error);
+      setSuccessMsg(res.message || 'Password reset link sent to your email.');
+      setStep('forgot_sent');
+    } else {
+      setLocalError(res.error);
+    }
   };
 
   const displayError = localError || (step === 'login' && error);
@@ -95,9 +80,8 @@ export function LoginPage() {
 
   const stepMeta = {
     login: { emoji: '👋', title: 'Welcome Back', sub: 'Sign in to your ULMGH369 account' },
-    forgot_email: { emoji: '🔑', title: 'Reset Password', sub: 'Enter your registered email to get an OTP' },
-    forgot_otp: { emoji: '📨', title: 'Verify OTP', sub: `Code sent to ${form.email}` },
-    forgot_reset: { emoji: '🔒', title: 'New Password', sub: 'Set a strong new password for your account' },
+    forgot_email: { emoji: '🔑', title: 'Reset Password', sub: 'Enter your registered email to receive a reset link' },
+    forgot_sent: { emoji: '✉️', title: 'Check Your Email', sub: `We sent a reset link to ${form.email}` },
   };
   const meta = stepMeta[step];
 
@@ -218,44 +202,33 @@ export function LoginPage() {
                 <input name="email" type="email" value={form.email} onChange={handleChange} required placeholder="Registered email address" className={inputClass} />
               </div>
               <button type="submit" disabled={loading} className={btnClass}>
-                {loading ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending...</> : 'Send OTP →'}
+                {loading ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending Link...</> : 'Send Reset Link →'}
+              </button>
+              <button type="button" onClick={() => { setStep('login'); clearMessages(); }} className="w-full text-center text-sm font-semibold text-gray-500 hover:text-gray-800 py-2 transition-colors">
+                ← Back to Login
               </button>
             </form>
           )}
 
-          {/* FORGOT OTP */}
-          {step === 'forgot_otp' && (
-            <form onSubmit={handleForgotOtp} className="space-y-5">
-              <div className="relative">
-                <ShieldCheck className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                <input name="otp" type="text" value={form.otp} onChange={handleChange} required maxLength={6}
-                  placeholder="Enter 6-digit OTP" className={inputClass + ' tracking-[0.5em] text-center text-lg font-bold pl-4'} />
+          {/* FORGOT SENT CONFIRMATION */}
+          {step === 'forgot_sent' && (
+            <div className="space-y-5 text-center">
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-4 rounded-2xl text-sm leading-relaxed text-left">
+                <p className="font-bold text-emerald-800 mb-1">Check your inbox</p>
+                We've sent a password reset link to <strong className="text-gray-900">{form.email}</strong>. Please click the link in that email to set your new password.
               </div>
-              <button type="submit" disabled={loading} className={btnClass}>
-                {loading ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Verifying...</> : 'Verify OTP →'}
-              </button>
-            </form>
-          )}
-
-          {/* FORGOT RESET */}
-          {step === 'forgot_reset' && (
-            <form onSubmit={handleForgotReset} className="space-y-4">
-              {[
-                { name: 'newPassword', show: showNewPass, toggle: () => setShowNewPass(!showNewPass), placeholder: 'New password' },
-                { name: 'confirmPassword', show: showConfirmPass, toggle: () => setShowConfirmPass(!showConfirmPass), placeholder: 'Confirm new password' },
-              ].map(f => (
-                <div key={f.name} className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                  <input name={f.name} type={f.show ? 'text' : 'password'} value={form[f.name]} onChange={handleChange} required minLength={6} placeholder={f.placeholder} className={inputClass + ' pr-12'} />
-                  <button type="button" onClick={f.toggle} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-orange transition-colors">
-                    {f.show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              ))}
-              <button type="submit" disabled={loading} className={btnClass}>
-                {loading ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Resetting...</> : 'Reset Password →'}
-              </button>
-            </form>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Didn't receive the email? Check your spam folder or click below to try again.
+              </p>
+              <div className="flex flex-col gap-2 pt-1">
+                <button type="button" onClick={() => { setStep('forgot_email'); clearMessages(); }} className="w-full border-2 border-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-[14px] hover:bg-gray-50 transition-all">
+                  Try another email
+                </button>
+                <button type="button" onClick={() => { setStep('login'); clearMessages(); }} className="w-full text-center text-sm font-semibold text-brand-blue hover:underline py-2 transition-colors">
+                  ← Back to Login
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>

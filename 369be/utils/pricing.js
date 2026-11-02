@@ -21,16 +21,38 @@ function findMatchingOffer(product, offers = []) {
   if (!product || !Array.isArray(offers) || offers.length === 0) return null;
 
   const now = new Date();
+  const isVendorProduct = product.vendor_id !== null && product.vendor_id !== undefined && product.vendor_id !== '';
 
   const eligibleOffers = offers.filter((o) => {
     if (!o) return false;
+    // Only auto-applied offers
     if (o.offer_type !== 'offer') return false;
     if (o.is_active === false) return false;
+
+    // Expiry check
     if (o.expires_at && new Date(o.expires_at) <= now) return false;
 
-    if (o.scope === 'all') return true;
+    const isOfferFromVendor = o.created_by === 'vendor' || (o.vendor_id !== null && o.vendor_id !== undefined && o.vendor_id !== '');
 
+    // 1. Vendor offer ownership isolation:
+    // Vendor-created offers apply ONLY to eligible products belonging to that specific vendor.
+    if (isOfferFromVendor) {
+      if (!isVendorProduct) return false;
+      if (String(product.vendor_id) !== String(o.vendor_id)) return false;
+    }
+
+    // 2. Admin storewide automatic offers:
+    // Prevent admin storewide offers from applying to third-party vendor products.
+    if (o.scope === 'all') {
+      if (isOfferFromVendor) {
+        return isVendorProduct && String(product.vendor_id) === String(o.vendor_id);
+      }
+      return !isVendorProduct;
+    }
+
+    // 3. Category-scoped offers:
     if (o.scope === 'category') {
+      if (!isOfferFromVendor && isVendorProduct) return false;
       let cats = [];
       try {
         cats = typeof o.category_ids === 'string' ? JSON.parse(o.category_ids) : (o.category_ids || []);
@@ -40,6 +62,7 @@ function findMatchingOffer(product, offers = []) {
       return cats.map(String).includes(String(product.category));
     }
 
+    // 4. Product-scoped offers:
     if (o.scope === 'product') {
       let pids = [];
       try {
@@ -55,6 +78,7 @@ function findMatchingOffer(product, offers = []) {
 
   if (eligibleOffers.length === 0) return null;
 
+  // Best offer is the one with highest discount_percent
   return eligibleOffers.reduce((best, curr) => {
     const currPct = parseFloat(curr.discount_percent) || 0;
     const bestPct = parseFloat(best.discount_percent) || 0;

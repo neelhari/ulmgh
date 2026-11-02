@@ -10,6 +10,9 @@ import { calculateProductPricing } from '../utils/pricing';
 import { calculateDeliveryCharge } from '../config/delivery';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+const RazorpayNative = registerPlugin('RazorpayPlugin');
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
 
@@ -276,20 +279,60 @@ export function CheckoutPage() {
     return res.json();
   };
 
-  const handlePlaceOrder = async () => {
-    setIsPlacingOrder(true);
+  const verifyAndConfirmOrder = async (response) => {
     try {
-      const res = await loadRazorpay();
-      if (!res) {
-        alert('Razorpay SDK failed to load. Are you online?');
+      // 1. Verify payment signature with backend
+      const verifyRes = await fetch(`${BACKEND_URL}/general/razorpay/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_signature: response.razorpay_signature
+        })
+      });
+      const verifyData = await verifyRes.json();
+
+      if (!verifyData.success) {
+        alert(verifyData.error || 'Payment verification failed');
         setIsPlacingOrder(false);
+        setOrderConfirmed(false);
         return;
       }
 
-      // Amount to charge online: ₹1 for COD, full amount for prepaid
+      // 2. Create and confirm the order in backend
+      const createOrderData = await createOrder(paymentMethod, {
+        razorpay_order_id: response.razorpay_order_id,
+        razorpay_payment_id: response.razorpay_payment_id,
+        razorpay_signature: response.razorpay_signature,
+      });
+
+      if (createOrderData.success) {
+        setOrderConfirmed(true);
+        setTimeout(() => {
+          clearCart();
+          navigate(`/order-tracking/${createOrderData.order.order_number}`);
+        }, 2000);
+      } else {
+        alert(createOrderData.error || 'Failed to place order after payment.');
+        setIsPlacingOrder(false);
+        setOrderConfirmed(false);
+      }
+    } catch (err) {
+      console.error('Order confirmation error:', err);
+      alert('Network error while confirming your order. Please contact support.');
+      setIsPlacingOrder(false);
+      setOrderConfirmed(false);
+    }
+  };
+
+  const handlePlaceOrder = async () => {
+    setIsPlacingOrder(true);
+    try {
+      // Amount to charge online: ₹1 for COD advance, full amount for prepaid
       const chargeAmount = paymentMethod === 'cod' ? COD_ADVANCE : grandTotal;
 
-      // Create Razorpay Order (amount calculated on server)
+      // Create Razorpay Order on server
       const orderRes = await fetch(`${BACKEND_URL}/general/razorpay/order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -323,66 +366,63 @@ export function CheckoutPage() {
           ? `COD Advance Payment (₹${COD_ADVANCE})`
           : 'Order Payment',
         order_id: orderData.order.id,
-        handler: async function (response) {
-          try {
-            // Verify payment
-            const verifyRes = await fetch(`${BACKEND_URL}/general/razorpay/verify`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature
-              })
-            });
-            const verifyData = await verifyRes.json();
+        prefill: {
+          name: address.name,
+          contact: address.mobile,
+          email: address.email || user?.email || ""
+        },
+        theme: { color: '#022A21' }
+      };
 
-            if (verifyData.success) {
-              const createOrderData = await createOrder(paymentMethod, {
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              });
-              if (createOrderData.success) {
-                setOrderConfirmed(true);
-                setTimeout(() => {
-                  clearCart();
-                  navigate(`/order-tracking/${createOrderData.order.order_number}`);
-                }, 2000);
-              } else {
-                alert(createOrderData.error || 'Failed to place order after payment.');
-                setIsPlacingOrder(false);
-                setOrderConfirmed(false);
-              }
-            } else {
-              alert(verifyData.error || 'Payment verification failed');
+      // --- PLATFORM BRANCHING ---
+      if (Capacitor.isNativePlatform()) {
+        // --- NATIVE ANDROID APK FLOW (Official Razorpay Android Standard SDK) ---
+        try {
+          const response = await RazorpayNative.open(options);
+          await verifyAndConfirmOrder(response);
+        } catch (nativeErr) {
+          console.warn('Native Razorpay error/cancellation:', nativeErr);
+          const msg = nativeErr?.message || nativeErr?.description || 'Payment was cancelled or could not be completed.';
+          alert(`Payment: ${msg}`);
+          setIsPlacingOrder(false);
+          setOrderConfirmed(false);
+        }
+      } else {
+        // --- WEB BROWSER FLOW (Existing checkout.js, 100% preserved) ---
+        const res = await loadRazorpay();
+        if (!res) {
+          alert('Razorpay SDK failed to load. Are you online?');
+          setIsPlacingOrder(false);
+          return;
+        }
+
+        const webOptions = {
+          ...options,
+          handler: async function (response) {
+            await verifyAndConfirmOrder(response);
+          },
+          modal: {
+            ondismiss: function () {
               setIsPlacingOrder(false);
               setOrderConfirmed(false);
             }
-          } catch (err) {
-            console.error(err);
-            setIsPlacingOrder(false);
-            setOrderConfirmed(false);
           }
-        },
-        prefill: {
-          name: address.name,
-          contact: address.mobile
-        },
-        theme: { color: '#022A21' },
-        modal: {
-          ondismiss: function () {
-            setIsPlacingOrder(false);
-            setOrderConfirmed(false);
-          }
-        }
-      };
+        };
 
-      const paymentObject = new window.Razorpay(options);
-      paymentObject.open();
+        const paymentObject = new window.Razorpay(webOptions);
+        paymentObject.on('payment.failed', function (response) {
+          console.error('Razorpay payment failed:', response.error);
+          const errDetail = response.error?.description || response.error?.reason || 'Payment could not be processed.';
+          alert(`Payment Failed: ${errDetail}`);
+          setIsPlacingOrder(false);
+          setOrderConfirmed(false);
+        });
+        paymentObject.open();
+      }
     } catch (err) {
       console.error(err);
       setIsPlacingOrder(false);
+      setOrderConfirmed(false);
     }
   };
 

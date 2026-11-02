@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, ShoppingBag, MessageCircle, ChevronDown, Printer, FileText, PackageSearch, RefreshCw, Truck, XCircle, ExternalLink, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { VendorPackageDispatchBox } from '../../components/vendor/VendorPackageDispatchBox';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
 const FROM_ADDRESS = {
@@ -16,6 +17,8 @@ const STATUS_COLORS = {
   pending: "bg-gray-100 text-gray-700",
   paid: "bg-blue-100 text-blue-700",
   processing: "bg-yellow-100 text-yellow-700",
+  ready_to_ship: "bg-indigo-100 text-indigo-700",
+  partially_shipped: "bg-amber-100 text-amber-800",
   shipped: "bg-purple-100 text-purple-700",
   delivered: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-700",
@@ -446,12 +449,27 @@ export function VendorOrdersPage() {
                                     </div>
                                   </div>
 
-                                  <div className="w-full xl:w-80 space-y-6">
+                                  <div className="w-full xl:w-96 space-y-5">
+                                    {/* Package & Dispatch Box (Desktop View) */}
+                                    <VendorPackageDispatchBox
+                                      order={order}
+                                      onDispatch={handleVendorDispatch}
+                                      onCancel={handleVendorCancel}
+                                      onSync={handleVendorSyncStatus}
+                                      dispatchingId={dispatchingId}
+                                      cancellingId={cancellingId}
+                                      syncingId={syncingId}
+                                    />
+
                                     {/* Order Actions */}
-                                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                                      <h4 className="font-bold text-gray-900 mb-4 pb-3 border-b border-gray-100">Vendor Actions</h4>
+                                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                                      <h4 className="font-bold text-xs uppercase tracking-wider text-gray-500 mb-3 pb-2 border-b border-gray-100">Documents</h4>
                                       <div className="space-y-3">
-                                        <button onClick={(e) => { e.stopPropagation(); printInvoice(order); }} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-800 transition-colors shadow-sm min-h-[44px]">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); printInvoice(order); }}
+                                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-xs font-bold hover:bg-gray-800 transition-colors shadow-sm min-h-[42px]"
+                                        >
                                           <Printer className="w-4 h-4" /> Print Invoice
                                         </button>
                                       </div>
@@ -558,109 +576,16 @@ export function VendorOrdersPage() {
                         )}
                       </div>
 
-                      {/* Package & Dispatch Box */}
-                      <div className="bg-white p-3.5 rounded-xl border border-gray-200/80 shadow-xs space-y-2.5">
-                        <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
-                          <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                            Package & Dispatch
-                          </h4>
-                          {order.fulfillment_number && (
-                            <span className="text-[10px] bg-gray-100 text-gray-700 font-mono px-1.5 py-0.5 rounded">
-                              {order.fulfillment_number}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="text-xs space-y-1.5">
-                          {order.pickup_location_nickname && (
-                            <p className="text-gray-600">
-                              Dispatch Warehouse: <strong className="font-mono text-gray-800">{order.pickup_location_nickname}</strong>
-                            </p>
-                          )}
-
-                          {order.sync_error && (
-                            <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px]">
-                              ⚠️ {order.sync_error}
-                            </div>
-                          )}
-
-                          {order.status === 'cancelled' ? (
-                            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2">
-                              <XCircle className="w-4 h-4 text-red-500 shrink-0" />
-                              <span>Package Cancelled (Inventory Restored)</span>
-                            </div>
-                          ) : order.awb ? (
-                            <div className="space-y-2 mt-1">
-                              <div className="flex items-center justify-between p-2 rounded-lg bg-green-50 border border-green-200">
-                                <span className="font-bold text-green-800 text-xs">
-                                  🚚 {order.courier || 'Courier'}: {order.awb}
-                                </span>
-                                {order.tracking_link && (
-                                  <a href={order.tracking_link} target="_blank" rel="noopener noreferrer"
-                                    className="text-green-700 underline font-bold text-xs flex items-center gap-1">
-                                    <span>Track</span>
-                                    <ExternalLink className="w-3 h-3" />
-                                  </a>
-                                )}
-                              </div>
-                              <p className="text-[11px] text-blue-700 font-medium px-1">
-                                ✓ Courier collection arranged from your registered warehouse.
-                              </p>
-
-                              {/* Action controls for dispatched package */}
-                              <div className="flex items-center gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleVendorSyncStatus(order); }}
-                                  disabled={syncingId === (order.fulfillment_id || order.id)}
-                                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-semibold transition-colors disabled:opacity-50 min-h-[38px]"
-                                >
-                                  <RefreshCw className={`w-3.5 h-3.5 ${syncingId === (order.fulfillment_id || order.id) ? 'animate-spin' : ''}`} />
-                                  <span>{syncingId === (order.fulfillment_id || order.id) ? 'Syncing...' : 'Live Tracking Sync'}</span>
-                                </button>
-
-                                {order.status !== 'shipped' && order.status !== 'delivered' && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); handleVendorCancel(order); }}
-                                    disabled={cancellingId === (order.fulfillment_id || order.id)}
-                                    className="px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors disabled:opacity-50 min-h-[38px]"
-                                  >
-                                    {cancellingId === (order.fulfillment_id || order.id) ? 'Cancelling...' : 'Cancel'}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="space-y-2 mt-1">
-                              <p className="text-gray-500 text-[11px] italic">
-                                Package awaiting dispatch from your registered warehouse.
-                              </p>
-
-                              <div className="flex items-center gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleVendorDispatch(order); }}
-                                  disabled={dispatchingId === (order.fulfillment_id || order.id)}
-                                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#fe6603] hover:bg-[#e55c02] text-white rounded-xl text-xs font-bold transition-colors shadow-sm disabled:opacity-50 min-h-[42px]"
-                                >
-                                  <Truck className="w-4 h-4 shrink-0" />
-                                  <span>{dispatchingId === (order.fulfillment_id || order.id) ? 'Dispatching...' : '🚚 Dispatch Package'}</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleVendorCancel(order); }}
-                                  disabled={cancellingId === (order.fulfillment_id || order.id)}
-                                  className="px-3 py-2.5 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors disabled:opacity-50 min-h-[42px]"
-                                >
-                                  {cancellingId === (order.fulfillment_id || order.id) ? 'Cancelling...' : 'Cancel'}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      {/* Package & Dispatch Box (Mobile View) */}
+                      <VendorPackageDispatchBox
+                        order={order}
+                        onDispatch={handleVendorDispatch}
+                        onCancel={handleVendorCancel}
+                        onSync={handleVendorSyncStatus}
+                        dispatchingId={dispatchingId}
+                        cancellingId={cancellingId}
+                        syncingId={syncingId}
+                      />
 
                       {/* Products in this order */}
                       <div className="bg-white p-3.5 rounded-xl border border-gray-200/80 shadow-xs space-y-2.5">

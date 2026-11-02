@@ -25,7 +25,7 @@ async function getAdminPickupLocation(dbClient = pool) {
  * @param {Array} verifiedItems - Verified items from pricing calculation
  * @param {object} client - pg client with active transaction
  */
-async function createFulfillmentsForOrder(order, verifiedItems, client) {
+async function createFulfillmentsForOrder(order, verifiedItems, client, vendorAccountingMap = {}) {
   if (!order || !order.id) throw new Error('Order is required to create fulfillments');
   if (!Array.isArray(verifiedItems) || verifiedItems.length === 0) {
     throw new Error('Order items required to create fulfillments');
@@ -103,11 +103,17 @@ async function createFulfillmentsForOrder(order, verifiedItems, client) {
 
       const status = (order.payment_method === 'cod') ? 'pending' : 'paid';
 
+      // Extract accounting breakdown if available
+      const fin = (vendorAccountingMap && vendor_id) ? vendorAccountingMap[vendor_id] : null;
+      const commPct = fin ? fin.commissionPercent : null;
+      const commAmt = fin ? fin.commissionAmount : null;
+      const netAmt = fin ? fin.netEarnings : null;
+
       // Insert order_fulfillments (idempotent ON CONFLICT)
       const fulRes = await client.query(
         `INSERT INTO order_fulfillments 
-         (order_id, vendor_id, fulfillment_number, status, subtotal, total_amount, package_weight, pickup_location_nickname, shiprocket_pickup_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (order_id, vendor_id, fulfillment_number, status, subtotal, total_amount, package_weight, pickup_location_nickname, shiprocket_pickup_id, commission_percent, commission_amount, vendor_net_amount)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          ON CONFLICT (fulfillment_number) DO UPDATE SET updated_at = NOW()
          RETURNING *`,
         [
@@ -119,7 +125,10 @@ async function createFulfillmentsForOrder(order, verifiedItems, client) {
           subtotal, // total_amount
           pkgWeight,
           pickupNickname,
-          pickupId
+          pickupId,
+          commPct,
+          commAmt,
+          netAmt
         ]
       );
 
@@ -198,21 +207,17 @@ async function updateParentOrderStatus(orderId, dbClient = pool) {
   const statuses = res.rows.map(r => (r.status || '').toLowerCase());
 
   let newStatus = 'processing';
-  const allCancelled = statuses.every(s => s === 'cancelled');
-  const allDelivered = statuses.every(s => s === 'delivered');
-  const allShippedOrDelivered = statuses.every(s => s === 'shipped' || s === 'delivered');
-  const someShipped = statuses.some(s => s === 'shipped' || s === 'delivered');
-  const allPending = statuses.every(s => s === 'pending');
+  const nonCancelled = statuses.filter(s => s !== 'cancelled');
 
-  if (allCancelled) {
+  if (nonCancelled.length === 0) {
     newStatus = 'cancelled';
-  } else if (allDelivered) {
+  } else if (nonCancelled.every(s => s === 'delivered')) {
     newStatus = 'delivered';
-  } else if (allShippedOrDelivered) {
+  } else if (nonCancelled.every(s => s === 'shipped' || s === 'ready_to_ship' || s === 'delivered')) {
     newStatus = 'shipped';
-  } else if (someShipped) {
+  } else if (nonCancelled.some(s => s === 'shipped' || s === 'ready_to_ship' || s === 'delivered')) {
     newStatus = 'partially_shipped';
-  } else if (allPending) {
+  } else if (nonCancelled.every(s => s === 'pending')) {
     newStatus = 'pending';
   } else {
     newStatus = 'processing';
@@ -839,6 +844,18 @@ async function cancelFulfillmentPackage(fulfillmentId, options = {}, dbClient = 
        RETURNING *`,
       [f.id]
     );
+
+    // Reverse vendor wallet credit and handle debt if already paid out
+    let reversalResult = null;
+    if (f.vendor_id && f.order_number) {
+      const vendorAccountingService = require('./vendorAccountingService');
+      reversalResult = await vendorAccountingService.reverseVendorOrderCredit({
+        vendorId: f.vendor_id,
+        orderNumber: f.order_number,
+        reason: reason || 'Package cancelled',
+        client
+      });
+    }
 
     await updateParentOrderStatus(f.order_id, client);
 

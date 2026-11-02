@@ -44,6 +44,7 @@ async function setup() {
     ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_address_hash VARCHAR(64);
     ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_version INTEGER DEFAULT 1;
     ALTER TABLE vendors ADD COLUMN IF NOT EXISTS historical_shiprocket_pickups JSONB DEFAULT '[]'::jsonb;
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS outstanding_debt NUMERIC(10,2) DEFAULT 0.00;
 
     CREATE TABLE IF NOT EXISTS otps (
       id SERIAL PRIMARY KEY,
@@ -51,6 +52,15 @@ async function setup() {
       otp VARCHAR(6) NOT NULL,
       expires_at TIMESTAMP NOT NULL,
       created_at TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      email VARCHAR(150) NOT NULL,
+      token_hash VARCHAR(255) NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS addresses (
@@ -233,6 +243,24 @@ async function setup() {
       weight NUMERIC(8,2) DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    ALTER TABLE vendor_transactions ADD COLUMN IF NOT EXISTS gross_amount NUMERIC(10,2);
+    ALTER TABLE vendor_transactions ADD COLUMN IF NOT EXISTS commission_percent NUMERIC(5,2);
+    ALTER TABLE vendor_transactions ADD COLUMN IF NOT EXISTS commission_amount NUMERIC(10,2);
+    ALTER TABLE vendor_transactions ADD COLUMN IF NOT EXISTS net_amount NUMERIC(10,2);
+    ALTER TABLE vendor_transactions ADD COLUMN IF NOT EXISTS debt_recovered NUMERIC(10,2) DEFAULT 0.00;
+
+    ALTER TABLE order_fulfillments ADD COLUMN IF NOT EXISTS commission_percent NUMERIC(5,2);
+    ALTER TABLE order_fulfillments ADD COLUMN IF NOT EXISTS commission_amount NUMERIC(10,2);
+    ALTER TABLE order_fulfillments ADD COLUMN IF NOT EXISTS vendor_net_amount NUMERIC(10,2);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_tx_order_credit 
+    ON vendor_transactions (vendor_id, order_number, type) 
+    WHERE type = 'credit' AND order_number IS NOT NULL;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_tx_order_reversal 
+    ON vendor_transactions (vendor_id, order_number, type) 
+    WHERE type = 'reversal' AND order_number IS NOT NULL;
   `);
   console.log('✅ Tables created');
 

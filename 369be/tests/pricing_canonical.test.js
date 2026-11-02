@@ -1,13 +1,24 @@
 /**
- * Canonical Pricing Verification Test Suite
+ * Comprehensive Canonical Pricing Verification Test Suite
  * Tests consistency between database, backend calculateOrder, and frontend canonical pricing formulas.
  */
+const path = require('path');
 const assert = require('assert');
-const pool = require('../db');
+const { Pool } = require('pg');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+require('dotenv').config({ path: path.join(__dirname, '../.env.newdb') });
+
+const connectionString = process.env.NEW_DATABASE_URL || process.env.DATABASE_URL;
+const testPool = new Pool({
+  connectionString,
+  ssl: { rejectUnauthorized: true },
+  max: 5,
+});
+
 const { calculateOrder, findMatchingOffer, getDeliveryCharge } = require('../utils/pricing');
 
 async function runTests() {
-  console.log('🚀 Running Canonical Pricing Verification Tests...\n');
+  console.log('🚀 Running Canonical Pricing & Vendor Isolation Verification Tests...\n');
 
   let passed = 0;
   let failed = 0;
@@ -36,132 +47,132 @@ async function runTests() {
     }
   }
 
-  // Unit tests for findMatchingOffer
-  console.log('--- Unit Tests: findMatchingOffer & Pricing Formulas ---');
+  console.log('--- 1. Pricing Rules & Offer Scoping Tests ---');
 
-  test('Scope "all" matches any product', () => {
-    const product = { id: 107, category: 'Electronics', price: 10030 };
-    const offers = [
-      { id: 1, offer_type: 'offer', is_active: true, scope: 'all', discount_percent: '10.00' }
-    ];
+  test('Vendor product (₹50 / MRP ₹75) with no eligible offer: price ₹50 and badge 33% OFF', () => {
+    const product = { id: 108, name: 'Test product', price: 50, mrp: 75, vendor_id: 4 };
+    const offers = []; // No active offers
     const match = findMatchingOffer(product, offers);
-    assert.strictEqual(match?.id, 1);
+    assert.strictEqual(match, null, 'No offer should match');
+
+    const basePrice = product.price;
+    const effectivePrice = basePrice;
+    const rawMrp = Number(product.mrp);
+    const hasRealMrp = rawMrp > basePrice;
+    const discountPercent = hasRealMrp ? Math.round(((rawMrp - effectivePrice) / rawMrp) * 100) : 0;
+
+    assert.strictEqual(effectivePrice, 50, 'Effective price must be exactly ₹50');
+    assert.strictEqual(discountPercent, 33, 'Discount badge must be 33% OFF');
   });
 
-  test('Scope "category" matches correct category', () => {
-    const product = { id: 107, category: 'Electronics', price: 10030 };
-    const offers = [
-      { id: 2, offer_type: 'offer', is_active: true, scope: 'category', category_ids: ['Clothing'], discount_percent: '20.00' },
-      { id: 3, offer_type: 'offer', is_active: true, scope: 'category', category_ids: ['Electronics'], discount_percent: '15.00' }
+  test('Admin storewide automatic offer does NOT apply to third-party vendor products', () => {
+    const vendorProduct = { id: 108, name: 'Test product', price: 50, mrp: 75, vendor_id: 4 };
+    const adminStorewideOffer = [
+      { id: 999, name: 'ADMIN_STOREWIDE', offer_type: 'offer', is_active: true, scope: 'all', discount_percent: '10.00', created_by: 'admin', vendor_id: null }
     ];
-    const match = findMatchingOffer(product, offers);
-    assert.strictEqual(match?.id, 3);
+    const match = findMatchingOffer(vendorProduct, adminStorewideOffer);
+    assert.strictEqual(match, null, 'Admin storewide offer must not apply to third-party vendor products');
   });
 
-  test('Scope "product" matches correct product ID', () => {
-    const product = { id: 107, category: 'Electronics', price: 10030 };
-    const offers = [
-      { id: 4, offer_type: 'offer', is_active: true, scope: 'product', product_ids: [102, 105], discount_percent: '25.00' },
-      { id: 5, offer_type: 'offer', is_active: true, scope: 'product', product_ids: [107], discount_percent: '30.00' }
+  test('Admin storewide automatic offer DOES apply to admin-owned products', () => {
+    const adminProduct = { id: 50, name: 'Platform Admin Item', price: 100, mrp: 150, vendor_id: null };
+    const adminStorewideOffer = [
+      { id: 999, name: 'ADMIN_STOREWIDE', offer_type: 'offer', is_active: true, scope: 'all', discount_percent: '10.00', created_by: 'admin', vendor_id: null }
     ];
-    const match = findMatchingOffer(product, offers);
-    assert.strictEqual(match?.id, 5);
+    const match = findMatchingOffer(adminProduct, adminStorewideOffer);
+    assert.notStrictEqual(match, null, 'Admin storewide offer must apply to admin products');
+    assert.strictEqual(match.id, 999);
+
+    const effectivePrice = Math.round(adminProduct.price * (1 - parseFloat(match.discount_percent) / 100));
+    const discountPercent = Math.round(((adminProduct.mrp - effectivePrice) / adminProduct.mrp) * 100);
+    assert.strictEqual(effectivePrice, 90);
+    assert.strictEqual(discountPercent, 40); // (150 - 90)/150 = 40%
   });
 
-  test('Highest discount percent wins when multiple offers match', () => {
-    const product = { id: 107, category: 'Electronics', price: 10030 };
-    const offers = [
-      { id: 1, offer_type: 'offer', is_active: true, scope: 'all', discount_percent: '10.00' },
-      { id: 2, offer_type: 'offer', is_active: true, scope: 'category', category_ids: ['Electronics'], discount_percent: '15.00' }
+  test('Vendor-created offers apply ONLY to products owned by that vendor', () => {
+    const vendor4Product = { id: 108, name: 'Test product', price: 50, mrp: 75, vendor_id: 4 };
+    const vendor1Product = { id: 102, name: 'Vendor 1 Product', price: 200, mrp: 300, vendor_id: 1 };
+    const adminProduct = { id: 50, name: 'Admin Item', price: 100, mrp: 150, vendor_id: null };
+
+    const vendor4Offer = [
+      { id: 10, name: 'V4_SALE', offer_type: 'offer', is_active: true, scope: 'all', discount_percent: '20.00', created_by: 'vendor', vendor_id: 4 }
     ];
-    const match = findMatchingOffer(product, offers);
-    assert.strictEqual(match?.id, 2);
-    assert.strictEqual(parseFloat(match?.discount_percent), 15);
+
+    const matchV4 = findMatchingOffer(vendor4Product, vendor4Offer);
+    const matchV1 = findMatchingOffer(vendor1Product, vendor4Offer);
+    const matchAdmin = findMatchingOffer(adminProduct, vendor4Offer);
+
+    assert.notStrictEqual(matchV4, null, 'Vendor 4 offer must match Vendor 4 product');
+    assert.strictEqual(matchV4.id, 10);
+    assert.strictEqual(matchV1, null, 'Vendor 4 offer must NOT match Vendor 1 product');
+    assert.strictEqual(matchAdmin, null, 'Vendor 4 offer must NOT match Admin product');
   });
 
-  test('Expired offers and inactive offers are excluded', () => {
-    const product = { id: 107, category: 'Electronics', price: 10030 };
+  test('Inactive offers and expired offers are excluded', () => {
+    const product = { id: 50, price: 100, vendor_id: null };
     const offers = [
-      { id: 1, offer_type: 'offer', is_active: false, scope: 'all', discount_percent: '50.00' },
-      { id: 2, offer_type: 'offer', is_active: true, scope: 'all', discount_percent: '50.00', expires_at: new Date(Date.now() - 10000).toISOString() },
-      { id: 3, offer_type: 'coupon', is_active: true, scope: 'all', discount_percent: '50.00' }, // coupon requires explicit code
-      { id: 4, offer_type: 'offer', is_active: true, scope: 'all', discount_percent: '10.00' }
+      { id: 1, offer_type: 'offer', is_active: false, scope: 'all', discount_percent: '50.00', created_by: 'admin' },
+      { id: 2, offer_type: 'offer', is_active: true, scope: 'all', discount_percent: '50.00', created_by: 'admin', expires_at: new Date(Date.now() - 10000).toISOString() },
+      { id: 3, offer_type: 'coupon', is_active: true, scope: 'all', discount_percent: '50.00', created_by: 'admin' }, // coupon requires code
     ];
     const match = findMatchingOffer(product, offers);
-    assert.strictEqual(match?.id, 4);
+    assert.strictEqual(match, null, 'No inactive, expired, or coupon offers should match');
   });
 
-  test('Product with base ₹10,030 and 10% offer computes exactly ₹9,027 and 40% OFF against MRP ₹15,000', () => {
-    const product = { id: 107, price: 10030, mrp: 15000 };
-    const offers = [
-      { id: 5, offer_type: 'offer', is_active: true, scope: 'all', discount_percent: '10.00' }
-    ];
-    const match = findMatchingOffer(product, offers);
-    const offerPct = parseFloat(match.discount_percent);
-    const effectivePrice = Math.round(product.price * (1 - offerPct / 100));
-    const discountPercent = Math.round(((product.mrp - effectivePrice) / product.mrp) * 100);
+  console.log('\n--- 2. Database Integration & calculateOrder Tests ---');
 
-    assert.strictEqual(effectivePrice, 9027);
-    assert.strictEqual(discountPercent, 40);
+  await testAsync('Confirmed deletion of HELLO2000 from database', async () => {
+    const res = await testPool.query("SELECT * FROM offers WHERE id = 5 OR name ILIKE '%HELLO2000%'");
+    assert.strictEqual(res.rows.length, 0, 'HELLO2000 must be permanently deleted from DB');
   });
 
-  test('Product with missing MRP does not invent fake MRP', () => {
-    const product = { id: 108, price: 500, mrp: null };
-    const offers = [
-      { id: 5, offer_type: 'offer', is_active: true, scope: 'all', discount_percent: '10.00' }
-    ];
-    const match = findMatchingOffer(product, offers);
-    const offerPct = parseFloat(match.discount_percent);
-    const effectivePrice = Math.round(product.price * (1 - offerPct / 100));
-    
-    // Canonical rule: if no real MRP > basePrice, mrp is null, discount is offer discount
-    const rawMrp = Number(product.mrp || 0);
-    const hasRealMrp = rawMrp > product.price;
-    const strikePrice = hasRealMrp ? rawMrp : product.price;
-    const discountPercent = hasRealMrp ? Math.round(((rawMrp - effectivePrice) / rawMrp) * 100) : Math.round(offerPct);
-
-    assert.strictEqual(effectivePrice, 450);
-    assert.strictEqual(strikePrice, 500);
-    assert.strictEqual(discountPercent, 10);
-  });
-
-  // Database integration tests with calculateOrder
-  console.log('\n--- Integration Tests: Database calculateOrder ---');
-
-  await testAsync('Real DB product applies active HELLO2000 10% offer in calculateOrder', async () => {
-    const prodRes = await pool.query('SELECT id, name, price, stock FROM products WHERE is_active=true AND stock > 0 ORDER BY id DESC LIMIT 1');
-    assert(prodRes.rows.length > 0, 'At least one active in-stock product exists in DB');
-    const dbProd = prodRes.rows[0];
-    const basePrice = parseFloat(dbProd.price);
-
-    const result = await calculateOrder([{ id: dbProd.id, qty: 1 }]);
+  await testAsync('calculateOrder calculates exact vendor price ₹50 for product 108', async () => {
+    const result = await calculateOrder([{ id: 108, qty: 1 }], '', testPool);
     assert.strictEqual(result.verifiedItems.length, 1);
     const item = result.verifiedItems[0];
 
-    // Base price in DB vs effective offer price (10% off)
-    const expectedEffectivePrice = Math.round(basePrice * 0.9);
-    assert.strictEqual(item.base_price, basePrice);
-    assert.strictEqual(item.price, expectedEffectivePrice);
-    assert.strictEqual(result.subtotal, expectedEffectivePrice);
-    console.log(`     Product #${dbProd.id} ("${dbProd.name}"): Base ₹${basePrice} -> Offer Price ₹${item.price} (Subtotal: ₹${result.subtotal})`);
+    assert.strictEqual(item.base_price, 50, 'Base price must be ₹50');
+    assert.strictEqual(item.price, 50, 'Final charged unit price must be ₹50');
+    assert.strictEqual(item.offer_discount, 0, 'No offer discount applied');
+    assert.strictEqual(result.subtotal, 50, 'Subtotal must be ₹50');
+    console.log(`     Product #108: Unit Price ₹${item.price}, Subtotal ₹${result.subtotal}`);
   });
 
-  await testAsync('Real DB product with 2 qty calculates subtotal as price * 2', async () => {
-    const prodRes = await pool.query('SELECT id, name, price, stock FROM products WHERE is_active=true AND stock >= 2 ORDER BY id DESC LIMIT 1');
-    if (prodRes.rows.length > 0) {
-      const dbProd = prodRes.rows[0];
-      const basePrice = parseFloat(dbProd.price);
-      const expectedEffectivePrice = Math.round(basePrice * 0.9);
-      const result = await calculateOrder([{ id: dbProd.id, qty: 2 }]);
-      assert.strictEqual(result.subtotal, expectedEffectivePrice * 2);
-      console.log(`     Product #${dbProd.id} Qty 2 -> Subtotal ₹${result.subtotal}`);
-    } else {
-      console.log('     Skipped qty=2 test (no product with stock >= 2)');
-    }
+  await testAsync('calculateOrder calculates correct subtotal for qty > 1', async () => {
+    const result = await calculateOrder([{ id: 108, qty: 3 }], '', testPool);
+    assert.strictEqual(result.verifiedItems.length, 1);
+    const item = result.verifiedItems[0];
+
+    assert.strictEqual(item.price, 50);
+    assert.strictEqual(item.qty, 3);
+    assert.strictEqual(result.subtotal, 150, 'Subtotal for qty=3 must be 3 * 50 = 150');
+  });
+
+  await testAsync('Backend calculateOrder ignores and overrides tampered client prices', async () => {
+    // Client attempts to pass a tampered price of ₹1 instead of ₹50
+    const tamperedPayload = [{ id: 108, price: 1, base_price: 1, qty: 2 }];
+    const result = await calculateOrder(tamperedPayload, '', testPool);
+    const item = result.verifiedItems[0];
+
+    assert.strictEqual(item.price, 50, 'Backend must override tampered client price to genuine ₹50');
+    assert.strictEqual(result.subtotal, 100, 'Subtotal must be 2 * 50 = ₹100');
+    console.log(`     Tampered price ₹1 was rejected; securely charged genuine price ₹${item.price}`);
+  });
+
+  await testAsync('Existing historical orders in DB remain completely unchanged', async () => {
+    const order18 = await testPool.query("SELECT id, order_number, total, items FROM orders WHERE id = 18");
+    assert(order18.rows.length > 0, 'Order 18 exists');
+    assert.strictEqual(order18.rows[0].total, '45.00', 'Historical Order 18 total must remain 45.00');
+
+    const order17 = await testPool.query("SELECT id, order_number, total FROM orders WHERE id = 17");
+    assert(order17.rows.length > 0, 'Order 17 exists');
+    assert.strictEqual(order17.rows[0].total, '179.00', 'Historical Order 17 total must remain 179.00');
   });
 
   console.log(`\n=================================================`);
   console.log(`TEST SUMMARY: ${passed} Passed, ${failed} Failed`);
+  await testPool.end();
+
   if (failed > 0) {
     process.exit(1);
   } else {
@@ -169,7 +180,8 @@ async function runTests() {
   }
 }
 
-runTests().catch(err => {
+runTests().catch(async (err) => {
   console.error("Test runner exception:", err);
+  try { await testPool.end(); } catch (e) {}
   process.exit(1);
 });

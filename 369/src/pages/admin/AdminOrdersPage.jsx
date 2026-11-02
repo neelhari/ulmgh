@@ -125,14 +125,18 @@ export function AdminOrdersPage() {
               sync_error: null,
             };
           });
-          const allShipped = updatedFulfillments.every(
-            (f) => f.status === "shipped" || f.status === "delivered"
+          const activeFuls = updatedFulfillments.filter((f) => f.status !== "cancelled");
+          const allDispatched = activeFuls.length > 0 && activeFuls.every(
+            (f) => f.status === "shipped" || f.status === "delivered" || f.status === "ready_to_ship"
+          );
+          const anyDispatched = activeFuls.some(
+            (f) => f.status === "shipped" || f.status === "ready_to_ship" || f.status === "delivered"
           );
           return {
             ...o,
-            status: allShipped
+            status: allDispatched
               ? "shipped"
-              : updatedFulfillments.some((f) => f.status === "shipped")
+              : anyDispatched
               ? "partially_shipped"
               : o.status,
             fulfillments: updatedFulfillments,
@@ -1074,15 +1078,19 @@ export function AdminOrdersPage() {
                                     className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                                       ful.status === "shipped" || ful.status === "delivered"
                                         ? "bg-green-100 text-green-700"
-                                        : ful.status === "ready_to_ship"
-                                        ? "bg-blue-100 text-blue-700"
+                                        : ful.status === "ready_to_ship" || ful.awb_code
+                                        ? "bg-emerald-100 text-emerald-800"
                                         : ful.status === "failed"
                                         ? "bg-red-100 text-red-700"
                                         : "bg-amber-100 text-amber-700"
                                     }`}
                                   >
-                                    {ful.status === "ready_to_ship"
-                                      ? "Pickup Scheduled"
+                                    {ful.status === "ready_to_ship" || (ful.awb_code && ful.status !== "shipped" && ful.status !== "delivered")
+                                      ? "Already Dispatched"
+                                      : ful.status === "shipped"
+                                      ? "Dispatched • Shipped"
+                                      : ful.status === "delivered"
+                                      ? "Delivered"
                                       : ful.status || "Pending"}
                                   </span>
                                 </div>
@@ -1150,23 +1158,36 @@ export function AdminOrdersPage() {
                                   </div>
                                 ) : ful.awb_code ? (
                                   <div className="space-y-2">
-                                    <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5">
-                                      <span className="text-green-800 font-bold text-xs truncate">
-                                        AWB: {ful.awb_code}{" "}
-                                        {ful.courier_name ? `(${ful.courier_name})` : ""}
-                                      </span>
-                                      {ful.tracking_url && (
-                                        <a
-                                          href={ful.tracking_url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="ml-auto text-green-700 hover:text-green-900 flex items-center gap-0.5"
-                                          title="Live Tracking"
-                                        >
-                                          <span className="text-[10px] font-bold underline">Track</span>
-                                          <ExternalLink className="w-3 h-3" />
-                                        </a>
-                                      )}
+                                    <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 shadow-xs">
+                                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                                        <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs">
+                                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                          <span>Already Dispatched</span>
+                                        </div>
+                                        {ful.tracking_url && (
+                                          <a
+                                            href={ful.tracking_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-emerald-700 hover:text-emerald-900 flex items-center gap-1"
+                                            title="Live Tracking"
+                                          >
+                                            <span className="text-[11px] font-bold underline">Track</span>
+                                            <ExternalLink className="w-3 h-3" />
+                                          </a>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-emerald-950 font-mono flex items-center justify-between flex-wrap gap-1">
+                                        <span>
+                                          <span className="text-emerald-700 font-sans font-semibold text-[11px]">AWB:</span>{" "}
+                                          <strong>{ful.awb_code}</strong>
+                                        </span>
+                                        {ful.courier_name && (
+                                          <span className="text-emerald-700 font-sans text-[11px] font-medium bg-white/70 px-1.5 py-0.5 rounded border border-emerald-200">
+                                            {ful.courier_name}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                     {(ful.pickup_token_number || ful.label_url) && (
                                       <div className="flex items-center justify-between text-[11px] text-gray-600 px-1 pt-0.5">

@@ -1,3 +1,4 @@
+const vendorAccountingService = require('../services/vendorAccountingService');
 const router = require('express').Router();
 const pool = require('../db');
 const Razorpay = require('razorpay');
@@ -295,27 +296,10 @@ router.post('/orders', validate(orderSchema), async (req, res) => {
     const addressJson = JSON.stringify(address);
     const orderStatus = pMethod === 'cod' ? 'pending' : 'paid';
 
-    // Prepare vendor earnings
-    const vendorData = {}; // { vendor_id: { total, items: [] } }
-    for (const item of verifiedItems) {
-      if (item.product && item.product.vendor_id) {
-        const vid = item.product.vendor_id;
-        const subCheck = await pool.query(
-          'SELECT subscription_expires_at FROM vendors WHERE id=$1',
-          [vid]
-        );
-        const expiry = subCheck.rows[0]?.subscription_expires_at;
-        if (expiry && new Date(expiry) < new Date()) continue;
-        const amt = item.qty * item.price;
-        if (!vendorData[vid]) vendorData[vid] = { total: 0, items: [] };
-        vendorData[vid].total += amt;
-        vendorData[vid].items.push(item);
-      }
-    }
-
     // Atomic transaction: Order insert + Stock deduction + Vendor wallet credit
     const client = await pool.connect();
     let result;
+    let vendorAccounting = {};
     try {
       await client.query('BEGIN');
 
@@ -363,17 +347,15 @@ router.post('/orders', validate(orderSchema), async (req, res) => {
         }
       }
 
-      // Credit vendor wallets and record transactions within the transaction
-      for (const [vid, data] of Object.entries(vendorData)) {
-        await client.query('UPDATE vendors SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2', [data.total, vid]);
-        await client.query(
-          'INSERT INTO vendor_transactions (vendor_id, type, amount, order_number, description) VALUES ($1, $2, $3, $4, $5)',
-          [vid, 'credit', data.total, orderNumber, `Order ${orderNumber} - ${data.items.length} item(s)`]
-        );
-      }
+      // Vendor Accounting: Verify subscriptions, calculate commission, recover debt & credit net earnings
+      vendorAccounting = await vendorAccountingService.processOrderVendorAccounting({
+        orderNumber,
+        verifiedItems,
+        client
+      });
 
-      // Phase 3: Atomically create vendor fulfillments
-      await fulfillmentService.createFulfillmentsForOrder(result.rows[0], verifiedItems, client);
+      // Phase 3: Atomically create vendor fulfillments with commission tracking
+      await fulfillmentService.createFulfillmentsForOrder(result.rows[0], verifiedItems, client, vendorAccounting);
 
       await client.query('COMMIT');
     } catch (txErr) {
@@ -393,10 +375,10 @@ router.post('/orders', validate(orderSchema), async (req, res) => {
     }
 
     // Send vendor notifications
-    for (const [vid, data] of Object.entries(vendorData)) {
+    for (const [vid, data] of Object.entries(vendorAccounting)) {
       const vendorRes = await pool.query('SELECT name, email FROM vendors WHERE id = $1', [vid]);
       if (vendorRes.rows[0]) {
-        sendOrderEmailToVendor(vendorRes.rows[0].email, vendorRes.rows[0].name, orderNumber, data.items, data.total, address, pMethod);
+        sendOrderEmailToVendor(vendorRes.rows[0].email, vendorRes.rows[0].name, orderNumber, data.items, data.grossAmount, address, pMethod);
       }
     }
     

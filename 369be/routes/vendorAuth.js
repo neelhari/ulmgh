@@ -316,7 +316,7 @@ router.get('/me', vendorAuthMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT v.id, v.name, v.store_name, v.email, v.phone, v.address, v.status,
-              v.wallet_balance, v.subscription_expires_at, v.created_at,
+              v.wallet_balance, COALESCE(v.outstanding_debt, 0) as outstanding_debt, v.subscription_expires_at, v.created_at,
               v.pickup_contact_name, v.pickup_phone, v.pickup_line1, v.pickup_line2,
               v.pickup_city, v.pickup_state, v.pickup_pincode, v.shiprocket_pickup_nickname,
               v.is_pickup_synced, v.shiprocket_pickup_id, v.pickup_synced_at, v.pickup_sync_error, v.pickup_version,
