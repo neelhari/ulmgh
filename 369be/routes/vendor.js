@@ -443,13 +443,6 @@ router.put('/bank-details', async (req, res) => {
   const cleanHolder = String(bank_account_holder_name || '').trim();
   const cleanBankName = String(bank_name || '').trim();
 
-  if (cleanAccNum.length < 8 || cleanAccNum.length > 25) {
-    return res.status(400).json({ error: 'Bank account number must be between 8 and 25 digits' });
-  }
-  if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(cleanIfsc)) {
-    return res.status(400).json({ error: 'Please enter a valid 11-character Indian IFSC code (e.g. HDFC0001234)' });
-  }
-
   try {
     const result = await pool.query(
       `UPDATE vendors 

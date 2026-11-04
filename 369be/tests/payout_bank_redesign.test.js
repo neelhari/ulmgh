@@ -40,12 +40,12 @@ async function runBankRedesignTests() {
 
     console.log(`Created test vendor A #${vendorA.id} (₹2,000) and vendor B #${vendorB.id} (₹1,500)\n`);
 
-    // SCENARIO 1: Vendor saves bank details (PUT /api/vendor/bank-details)
-    console.log('1. Vendor saves bank details...');
-    const savedHolder = 'Alpha Business Account';
-    const savedBank = 'State Bank of India';
-    const savedAcc = '50100987654321';
-    const savedIfsc = 'SBIN0001234';
+    // SCENARIO 1: Vendor saves bank details without format restrictions (PUT /api/vendor/bank-details)
+    console.log('1. Vendor saves bank details without format restrictions...');
+    const savedHolder = 'Alpha Custom Business';
+    const savedBank = 'Co-Operative Society Bank';
+    const savedAcc = 'ACC-9921-SHORT';
+    const savedIfsc = 'MYBANK12'; // Non-standard IFSC (no 11-char requirement, arbitrary format)
 
     const saveRes = await client.query(`
       UPDATE vendors 

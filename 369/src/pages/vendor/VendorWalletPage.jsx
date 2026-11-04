@@ -116,16 +116,8 @@ export function VendorWalletPage() {
       toast.error('Bank account numbers do not match');
       return;
     }
-    if (accountNumber.trim().length < 8 || accountNumber.trim().length > 25) {
-      toast.error('Bank account number must be between 8 and 25 digits');
-      return;
-    }
 
     const cleanIfsc = ifscCode.trim().toUpperCase();
-    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(cleanIfsc)) {
-      toast.error('Please enter a valid 11-character Indian IFSC code (e.g. HDFC0001234)');
-      return;
-    }
 
     setBankSubmitting(true);
     try {
@@ -562,7 +554,6 @@ export function VendorWalletPage() {
                   type="text"
                   required
                   placeholder="e.g. HDFC0001234"
-                  maxLength={11}
                   value={ifscCode}
                   onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono uppercase text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#fe6603]"
