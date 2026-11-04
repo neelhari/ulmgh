@@ -570,14 +570,14 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
                   </div>
                 ) : (
                   <Link to="/" className="flex items-center transition-all duration-300 group">
-                    <div className={`bg-white/95 backdrop-blur-xs rounded-2xl p-1.5 shadow-md border border-white/90 transition-all duration-300 flex items-center justify-center ${
-                      isScrolled ? 'h-10 px-2' : 'h-14 px-2.5'
+                    <div className={`bg-white/95 backdrop-blur-xs rounded-2xl p-1 shadow-md border border-white/90 transition-all duration-300 flex items-center justify-center overflow-hidden ${
+                      isScrolled ? 'h-10 px-1.5' : 'h-14 px-1.5'
                     }`}>
                       <img
                         src={logo}
                         alt="ULMGH-369"
                         className={`w-auto object-contain rounded-xl transition-all duration-300 ${
-                          isScrolled ? 'h-7' : 'h-11'
+                          isScrolled ? 'h-[34px]' : 'h-[50px]'
                         }`}
                       />
                     </div>
