@@ -1,4 +1,4 @@
-okay continuimport React, { useRef } from 'react';
+import React, { useRef } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import logoImg from '../assets/logo.webp';
@@ -16,47 +16,51 @@ export function SplashScreen({ onComplete }) {
       }
     });
 
-    // Phase 1: Reveal logo with the original smooth popup style
+    // 1. Pop-up entrance: Logo reveals and enlarges from scale 0.7 to 1.0 (0.75s)
     tl.from(logo.current, {
-      y: 28,
-      scale: 0.85,
+      y: 35,
+      scale: 0.7,
       opacity: 0,
-      duration: 1.0,
-      ease: 'back.out(1.3)'
+      duration: 0.75,
+      ease: 'back.out(1.4)'
     })
-      // Phase 1.5: Expand ambient glow behind the logo (overlapping seamlessly)
+      // 2. Ambient glow expands behind logo
       .from(glowRef.current, {
         opacity: 0,
-        scale: 0.5,
-        duration: 1.3,
+        scale: 0.4,
+        duration: 0.9,
         ease: 'power2.out'
-      }, "-=0.8")
-      // Phase 2: Tagline gently fades and slides in
+      }, "-=0.6")
+      // 3. Tagline slides in
       .from(textRef.current, {
         y: 12,
         opacity: 0,
-        duration: 0.7,
-        ease: 'power2.out'
-      }, "-=0.6")
-      // Natural brief pause to admire branding (0.5s - never feels frozen or stuck)
-      .to({}, { duration: 0.5 })
-      // Phase 3: Logo and elements smoothly scale up and fade out
-      .to([logo.current, glowRef.current], {
-        scale: 1.15,
-        opacity: 0,
         duration: 0.5,
+        ease: 'power2.out'
+      }, "-=0.5")
+      // 4. Continuous Enlarging: Logo keeps smoothly enlarging forward (NEVER static/frozen)
+      .to(logo.current, {
+        scale: 1.08,
+        duration: 0.8,
+        ease: 'sine.inOut'
+      }, "-=0.4")
+      // 5. Exit zoom: Accelerates enlargement forward and fades into app
+      .to([logo.current, glowRef.current], {
+        scale: 1.25,
+        opacity: 0,
+        duration: 0.45,
         ease: 'power2.in'
-      })
+      }, "-=0.1")
       .to(textRef.current, {
         opacity: 0,
         y: -8,
         duration: 0.35,
         ease: 'power2.in'
       }, "-=0.4")
-      // Phase 4: Container fades to transparent to reveal the app (Total: 3.0s)
+      // 6. Container fades to reveal the app seamlessly (Total: ~2.2s)
       .to(container.current, {
         opacity: 0,
-        duration: 0.5,
+        duration: 0.45,
         ease: 'power2.inOut'
       }, "-=0.2");
   }, { scope: container });
