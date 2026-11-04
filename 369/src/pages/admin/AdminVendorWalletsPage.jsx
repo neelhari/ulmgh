@@ -26,7 +26,6 @@ export function AdminVendorWalletsPage() {
   // Ledger Filters
   const [ledgerVendorFilter, setLedgerVendorFilter] = useState('ALL');
   const [ledgerTypeFilter, setLedgerTypeFilter] = useState('ALL');
-  const [ledgerSalesTypeFilter, setLedgerSalesTypeFilter] = useState('ALL');
   const [ledgerStartDate, setLedgerStartDate] = useState('');
   const [ledgerEndDate, setLedgerEndDate] = useState('');
 
@@ -149,13 +148,6 @@ export function AdminVendorWalletsPage() {
     return payouts.filter(t => {
       const matchesVendor = ledgerVendorFilter === 'ALL' || String(t.vendor_id) === String(ledgerVendorFilter);
       const matchesType = ledgerTypeFilter === 'ALL' || t.type === ledgerTypeFilter;
-      
-      let matchesSalesType = true;
-      if (ledgerSalesTypeFilter === 'LEGACY') {
-        matchesSalesType = t.type === 'credit' && t.gross_amount == null;
-      } else if (ledgerSalesTypeFilter === 'TRACKED') {
-        matchesSalesType = t.type === 'credit' && t.gross_amount != null;
-      }
 
       let matchesDate = true;
       if (ledgerStartDate) {
@@ -167,9 +159,9 @@ export function AdminVendorWalletsPage() {
         matchesDate = matchesDate && new Date(t.created_at) <= end;
       }
 
-      return matchesVendor && matchesType && matchesSalesType && matchesDate;
+      return matchesVendor && matchesType && matchesDate;
     });
-  }, [payouts, ledgerVendorFilter, ledgerTypeFilter, ledgerSalesTypeFilter, ledgerStartDate, ledgerEndDate]);
+  }, [payouts, ledgerVendorFilter, ledgerTypeFilter, ledgerStartDate, ledgerEndDate]);
 
   // Open Payout Drawer and fetch fresh vendor bank details from backend
   const openPayoutDrawer = async (vendor) => {
@@ -515,7 +507,6 @@ export function AdminVendorWalletsPage() {
                     filteredVendors.map(vendor => {
                       const balance = parseFloat(vendor.wallet_balance || 0);
                       const gross = parseFloat(vendor.total_gross_sales || 0);
-                      const legacy = parseFloat(vendor.legacy_sales || 0);
                       const comm = parseFloat(vendor.total_commission_earned || 0);
                       const net = parseFloat(vendor.total_net_earnings || 0);
                       const debt = parseFloat(vendor.outstanding_debt || 0);
@@ -550,11 +541,6 @@ export function AdminVendorWalletsPage() {
                             <div className="font-semibold text-slate-900 text-xs">
                               ₹{gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
-                            {legacy > 0 && (
-                              <div className="text-[10px] text-slate-400" title={`₹${legacy} uncommissioned legacy sales`}>
-                                Inc. ₹{legacy.toLocaleString()} legacy
-                              </div>
-                            )}
                           </td>
 
                           {/* Platform Commission */}
@@ -663,20 +649,6 @@ export function AdminVendorWalletsPage() {
                 <option value="credit">Order Credits (+)</option>
                 <option value="debit">Payouts (-)</option>
                 <option value="reversal">Reversals (-)</option>
-              </select>
-            </div>
-
-            {/* Sales Type */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-500 font-medium">Sales Mode:</span>
-              <select
-                value={ledgerSalesTypeFilter}
-                onChange={(e) => setLedgerSalesTypeFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 focus:outline-none"
-              >
-                <option value="ALL">All Orders</option>
-                <option value="TRACKED">Commission-Tracked Orders</option>
-                <option value="LEGACY">Legacy Uncommissioned Orders</option>
               </select>
             </div>
 
@@ -795,7 +767,7 @@ export function AdminVendorWalletsPage() {
                             {gross != null ? (
                               `₹${gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                             ) : isCredit ? (
-                              <span className="text-[10px] text-slate-400 italic">Legacy ₹{amt.toLocaleString()}</span>
+                              `₹${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                             ) : (
                               '-'
                             )}
@@ -808,10 +780,8 @@ export function AdminVendorWalletsPage() {
                                 <span className="font-bold text-emerald-700">₹{commAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 <span className="text-[10px] text-slate-400 ml-1">({tx.commission_percent}%)</span>
                               </div>
-                            ) : isCredit ? (
-                              <span className="text-[10px] text-slate-400">Uncommissioned</span>
                             ) : (
-                              '-'
+                              <span className="text-slate-400">-</span>
                             )}
                           </td>
 

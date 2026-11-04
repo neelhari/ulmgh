@@ -44,6 +44,9 @@ dependencies {
     // Firebase BoM and Firebase Cloud Messaging (FCM)
     implementation platform('com.google.firebase:firebase-bom:33.10.0')
     implementation 'com.google.firebase:firebase-messaging'
+
+    // Official Razorpay Android Standard SDK
+    implementation 'com.razorpay:checkout:1.6.40'
 }
 
 apply from: 'capacitor.build.gradle'

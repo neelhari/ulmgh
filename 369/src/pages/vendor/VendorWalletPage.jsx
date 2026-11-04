@@ -417,7 +417,7 @@ export function VendorWalletPage() {
                         {gross != null ? (
                           `₹${gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         ) : isCredit ? (
-                          <span className="text-[10px] text-slate-400 italic">Legacy ₹{amt.toLocaleString()}</span>
+                          `₹${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         ) : (
                           '-'
                         )}
@@ -432,10 +432,8 @@ export function VendorWalletPage() {
                             </span>
                             <span className="text-[10px] text-slate-400 ml-1">({tx.commission_percent}%)</span>
                           </div>
-                        ) : isCredit ? (
-                          <span className="text-[10px] text-slate-400 italic">Legacy (uncommissioned)</span>
                         ) : (
-                          '-'
+                          <span className="text-slate-400">-</span>
                         )}
                       </td>
 

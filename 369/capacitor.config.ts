@@ -11,6 +11,11 @@ const config: CapacitorConfig = isVendor
       webDir: 'dist-vendor',
       server: {
         androidScheme: 'https',
+        allowNavigation: [
+          '*.razorpay.com',
+          'api.razorpay.com',
+          'checkout.razorpay.com',
+        ],
       },
       android: {
         path: 'android-vendor',
@@ -27,6 +32,11 @@ const config: CapacitorConfig = isVendor
           }
         : {
             androidScheme: 'https',
+            allowNavigation: [
+              '*.razorpay.com',
+              'api.razorpay.com',
+              'checkout.razorpay.com',
+            ],
           },
       android: {
         path: 'android',
