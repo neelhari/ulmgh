@@ -456,14 +456,13 @@ router.put('/bank-details', async (req, res) => {
        SET bank_account_holder_name = $1,
            bank_account_number = $2,
            bank_ifsc_code = $3,
-           bank_name = $4,
-           bank_verification_status = 'pending'
+           bank_name = $4
        WHERE id = $5
-       RETURNING id, name, store_name, bank_account_holder_name, bank_account_number, bank_ifsc_code, bank_name, bank_verification_status`,
+       RETURNING id, name, store_name, bank_account_holder_name, bank_account_number, bank_ifsc_code, bank_name`,
       [cleanHolder, cleanAccNum, cleanIfsc, cleanBankName, req.vendorId]
     );
     res.json({
-      message: 'Bank details saved and submitted for verification',
+      message: 'Bank details saved successfully',
       vendor: result.rows[0]
     });
   } catch (err) {

@@ -121,7 +121,13 @@ export function Footer() {
               <div className="w-9 h-9 rounded-full bg-[#054335] border border-brand-orange/20 flex items-center justify-center shrink-0 group-hover:bg-brand-orange group-hover:border-brand-orange transition-all text-brand-orange group-hover:text-white">
                 <MapPin className="w-4 h-4" />
               </div>
-              <span className="leading-relaxed mt-1 group-hover:text-white transition-colors">D.No.70-126-G-3-6-1,<br/>Near Beearappa Swamy Temple,<br/>Kallur, Kurnool – 518003<br/>Andhra Pradesh - India<br/><span className="text-[11px] text-brand-orange/70 font-medium tracking-wider"></span></span>
+              <span className="leading-relaxed mt-1 group-hover:text-white transition-colors">
+                ULMGH-369<br/>
+                D.No: 70/126-G-3-6-1,<br/>
+                Near Beerappa Swamy Temple, Raja Nagar, Kallur, Kurnool<br/>
+                Pin -518003<br/>
+                Andhra Pradesh, India
+              </span>
             </div>
             <div className="flex items-center gap-3 text-[14px] text-gray-300 group cursor-default">
               <div className="w-9 h-9 rounded-full bg-[#054335] border border-brand-orange/20 flex items-center justify-center shrink-0 group-hover:bg-brand-orange group-hover:border-brand-orange transition-all text-brand-orange group-hover:text-white">

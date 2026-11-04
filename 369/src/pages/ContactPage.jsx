@@ -97,10 +97,11 @@ export function ContactPage() {
                   <div>
                     <p className="text-sm font-bold text-[#022A21] mb-1">Corporate Office</p>
                     <p className="text-sm text-gray-600 leading-relaxed">
-                      D.No.70-126-G-3-6-1,<br/>
-                      Near Beearappa Swamy Temple,<br/>
-                      Kallur, Kurnool – 518003<br/>
-                      Andhra Pradesh - India
+                      <strong>ULMGH-369</strong><br/>
+                      D.No: 70/126-G-3-6-1,<br/>
+                      Near Beerappa Swamy Temple, Raja Nagar, Kallur, Kurnool<br/>
+                      Pin -518003<br/>
+                      Andhra Pradesh, India
                     </p>
                   </div>
                 </div>

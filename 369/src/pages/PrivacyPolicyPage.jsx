@@ -67,8 +67,13 @@ export function PrivacyPolicyPage() {
             <h2 className="text-2xl font-bold text-[#022A21] mb-4 font-serif">4. Contact Us</h2>
             <p>If you have questions or comments about this Privacy Policy, please contact us at:</p>
             <div className="mt-4 p-6 bg-[#f9f9f9] rounded-2xl border border-gray-100">
-              <p className="font-bold text-[#022A21] mb-1">ULMGH369</p>
-              <p className="text-gray-600 mb-1">1-1-738, Vinayaka temple road, Koratla, Telangana, India</p>
+              <p className="font-bold text-[#022A21] mb-1">ULMGH-369</p>
+              <p className="text-gray-600 mb-1 leading-relaxed">
+                D.No: 70/126-G-3-6-1,<br />
+                Near Beerappa Swamy Temple, Raja Nagar, Kallur, Kurnool<br />
+                Pin -518003<br />
+                Andhra Pradesh, India
+              </p>
               <p className="text-gray-600 mb-1">Phone: +91 90326 75205</p>
               <p className="text-brand-orange font-medium">Email: ulmgh369@gmail.com</p>
             </div>

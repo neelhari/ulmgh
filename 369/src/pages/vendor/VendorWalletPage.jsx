@@ -93,6 +93,18 @@ export function VendorWalletPage() {
     });
   }, [transactions, typeFilter, searchTerm]);
 
+  // Open bank modal and pre-fill with saved details
+  const openBankModal = () => {
+    if (vendor) {
+      setHolderName(vendor.bank_account_holder_name || vendor.name || '');
+      setBankName(vendor.bank_name || '');
+      setAccountNumber(vendor.bank_account_number || '');
+      setConfirmAccountNumber(vendor.bank_account_number || '');
+      setIfscCode(vendor.bank_ifsc_code || '');
+    }
+    setBankModalOpen(true);
+  };
+
   // Handle Bank Details Submission
   const handleBankDetailsSubmit = async (e) => {
     e.preventDefault();
@@ -101,13 +113,17 @@ export function VendorWalletPage() {
       return;
     }
     if (accountNumber.trim() !== confirmAccountNumber.trim()) {
-      toast.error('Account numbers do not match');
+      toast.error('Bank account numbers do not match');
+      return;
+    }
+    if (accountNumber.trim().length < 8 || accountNumber.trim().length > 25) {
+      toast.error('Bank account number must be between 8 and 25 digits');
       return;
     }
 
     const cleanIfsc = ifscCode.trim().toUpperCase();
     if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(cleanIfsc)) {
-      toast.error('Please enter a valid 11-digit Indian IFSC code (e.g. HDFC0001234)');
+      toast.error('Please enter a valid 11-character Indian IFSC code (e.g. HDFC0001234)');
       return;
     }
 
@@ -130,7 +146,7 @@ export function VendorWalletPage() {
 
       const data = await res.json();
       if (res.ok) {
-        toast.success('Bank details saved and submitted for verification');
+        toast.success('Bank details saved successfully');
         setBankModalOpen(false);
         await fetchWalletData();
       } else {
@@ -270,17 +286,13 @@ export function VendorWalletPage() {
           <div className="flex items-center gap-2">
             <Building2 className="w-5 h-5 text-slate-600" />
             <h3 className="font-bold text-slate-900 text-sm">Payout Bank Account</h3>
-            {bankStatus === 'verified' ? (
+            {vendor?.bank_account_number ? (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                <CheckCircle2 className="w-3 h-3" /> Verified
-              </span>
-            ) : bankStatus === 'pending' ? (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                <Clock className="w-3 h-3" /> Pending Verification
+                <CheckCircle2 className="w-3 h-3" /> Linked
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
-                Not Submitted
+                Not Added
               </span>
             )}
           </div>
@@ -295,7 +307,7 @@ export function VendorWalletPage() {
           )}
         </div>
         <button
-          onClick={() => setBankModalOpen(true)}
+          onClick={openBankModal}
           className="self-start md:self-auto px-4 py-2 text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl transition-colors shadow-2xs"
         >
           {vendor?.bank_account_number ? 'Update Bank Details' : 'Add Bank Account'}
@@ -576,7 +588,7 @@ export function VendorWalletPage() {
                       <span>Saving...</span>
                     </>
                   ) : (
-                    <span>Save & Submit</span>
+                    <span>Save Bank Details</span>
                   )}
                 </button>
               </div>

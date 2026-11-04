@@ -240,11 +240,12 @@ export function AboutPage() {
           <div className="bg-gradient-to-br from-[#022A21] to-[#054335] p-10 rounded-3xl text-white shadow-xl flex flex-col justify-center">
             <h3 className="text-2xl font-bold mb-6 font-serif">Contact Us</h3>
             <div className="space-y-4 text-gray-200">
-              <p>
-                D.No.70-126-G-3-6-1,<br />
-                Near Beearappa Swamy Temple,<br />
-                Kallur, Kurnool – 518003<br />
-                Andhra Pradesh - India
+              <p className="leading-relaxed">
+                <strong className="text-white">ULMGH-369</strong><br />
+                D.No: 70/126-G-3-6-1,<br />
+                Near Beerappa Swamy Temple, Raja Nagar, Kallur, Kurnool<br />
+                Pin -518003<br />
+                Andhra Pradesh, India
               </p>
               <p className="pt-4 border-t border-white/20">
                 <span className="font-semibold text-white">GSTIN:</span> 

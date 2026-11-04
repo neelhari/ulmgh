@@ -181,21 +181,18 @@ router.put('/orders/:id/status', authMiddleware, adminOnly, async (req, res) => 
   }
 });
 
-// PUT /api/admin/vendors/:id/verify-bank
-router.put('/vendors/:id/verify-bank', authMiddleware, adminOnly, async (req, res) => {
-  const { status } = req.body;
-  const allowed = ['verified', 'pending', 'rejected', 'not_provided'];
-  if (!allowed.includes(status)) {
-    return res.status(400).json({ error: 'Invalid verification status' });
-  }
-
+// GET /api/admin/vendors/:id/bank-details - Fetch vendor's saved bank details from database
+router.get('/vendors/:id/bank-details', authMiddleware, adminOnly, async (req, res) => {
   try {
     const result = await pool.query(
-      'UPDATE vendors SET bank_verification_status = $1 WHERE id = $2 RETURNING id, name, store_name, bank_verification_status',
-      [status, req.params.id]
+      `SELECT id, name, store_name, email, wallet_balance,
+              bank_account_holder_name, bank_account_number, bank_ifsc_code, bank_name
+       FROM vendors 
+       WHERE id = $1`,
+      [req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Vendor not found' });
-    res.json({ message: 'Bank verification status updated', vendor: result.rows[0] });
+    res.json({ vendor: result.rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -748,7 +745,7 @@ router.post('/vendors/:id/payout', authMiddleware, adminOnly, async (req, res) =
 
     // 2. Lock vendor row for update to serialize concurrent payout requests
     const vendorRes = await client.query(
-      'SELECT id, name, store_name, wallet_balance FROM vendors WHERE id=$1 FOR UPDATE',
+      'SELECT id, name, store_name, email, wallet_balance FROM vendors WHERE id=$1 FOR UPDATE',
       [req.params.id]
     );
     if (vendorRes.rows.length === 0) {

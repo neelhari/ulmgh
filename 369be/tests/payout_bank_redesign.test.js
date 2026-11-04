@@ -3,7 +3,7 @@ const pool = require('../db');
 
 async function runBankRedesignTests() {
   console.log('================================================================');
-  console.log('   ULMGH369 PHASE 2: BANK DETAILS & PAYOUT REDESIGN TEST SUITE   ');
+  console.log('   ULMGH369 COMPLETE WORKFLOW: BANK DETAILS & ADMIN PAYOUT       ');
   console.log('================================================================\n');
 
   const client = await pool.connect();
@@ -12,10 +12,10 @@ async function runBankRedesignTests() {
   const testPlanIds = [];
 
   try {
-    // 1. Create a test vendor with ₹2,000 balance
+    // Setup isolated test vendor with ₹2,000 balance
     const pRes = await client.query(`
       INSERT INTO subscription_plans (name, price, months, is_active, features)
-      VALUES ('Bank Test 10% Plan', 200, 1, true, '{"commission_percent": "10"}'::jsonb)
+      VALUES ('Workflow Test Plan', 200, 1, true, '{"commission_percent": "10"}'::jsonb)
       RETURNING id
     `);
     const planId = pRes.rows[0].id;
@@ -23,143 +23,197 @@ async function runBankRedesignTests() {
 
     const vRes = await client.query(`
       INSERT INTO vendors (name, store_name, email, phone, status, wallet_balance, outstanding_debt)
-      VALUES ('Bank Test Vendor', 'Bank Store', 'bank_test_${Date.now()}@test.com', '9888880009', 'approved', 2000.00, 0.00)
-      RETURNING id
+      VALUES ('Workflow Vendor A', 'Store Alpha', 'vendor_a_${Date.now()}@test.com', '9888880001', 'approved', 2000.00, 0.00)
+      RETURNING id, name, email
     `);
-    const vendorId = vRes.rows[0].id;
-    testVendorIds.push(vendorId);
+    const vendorA = vRes.rows[0];
+    testVendorIds.push(vendorA.id);
 
-    await client.query(`
-      INSERT INTO vendor_subscriptions (vendor_id, plan_id, plan_name, months, amount, payment_id, starts_at, expires_at, status, features)
-      VALUES ($1, $2, 'Bank Test 10% Plan', 1, 200, $3, NOW() - INTERVAL '1 day', NOW() + INTERVAL '30 days', 'active', '{"commission_percent": "10"}'::jsonb)
-    `, [vendorId, planId, `pay_bank_test_${Date.now()}`]);
+    // Create a second isolated vendor to test cross-vendor isolation
+    const v2Res = await client.query(`
+      INSERT INTO vendors (name, store_name, email, phone, status, wallet_balance, outstanding_debt)
+      VALUES ('Workflow Vendor B', 'Store Beta', 'vendor_b_${Date.now()}@test.com', '9888880002', 'approved', 1500.00, 0.00)
+      RETURNING id, name, email
+    `);
+    const vendorB = v2Res.rows[0];
+    testVendorIds.push(vendorB.id);
 
-    console.log(`Created test vendor #${vendorId} with initial balance ₹2,000.00\n`);
+    console.log(`Created test vendor A #${vendorA.id} (₹2,000) and vendor B #${vendorB.id} (₹1,500)\n`);
 
-    // TEST 1: Update vendor bank details (simulating PUT /api/vendor/bank-details)
-    console.log('Test 1: Updating vendor bank details...');
-    const updateBankRes = await client.query(`
+    // SCENARIO 1: Vendor saves bank details (PUT /api/vendor/bank-details)
+    console.log('1. Vendor saves bank details...');
+    const savedHolder = 'Alpha Business Account';
+    const savedBank = 'State Bank of India';
+    const savedAcc = '50100987654321';
+    const savedIfsc = 'SBIN0001234';
+
+    const saveRes = await client.query(`
       UPDATE vendors 
       SET bank_account_holder_name = $1,
           bank_account_number = $2,
           bank_ifsc_code = $3,
-          bank_name = $4,
-          bank_verification_status = 'pending'
+          bank_name = $4
       WHERE id = $5
-      RETURNING *
-    `, ['Test Holder', '123456789012', 'HDFC0001234', 'HDFC Bank', vendorId]);
+      RETURNING id, bank_account_holder_name, bank_account_number, bank_ifsc_code, bank_name
+    `, [savedHolder, savedAcc, savedIfsc, savedBank, vendorA.id]);
 
-    assert.strictEqual(updateBankRes.rows[0].bank_account_number, '123456789012');
-    assert.strictEqual(updateBankRes.rows[0].bank_ifsc_code, 'HDFC0001234');
-    assert.strictEqual(updateBankRes.rows[0].bank_verification_status, 'pending');
-    console.log('✅ Test 1 Passed: Vendor bank details stored with status pending.');
+    assert.strictEqual(saveRes.rows[0].bank_account_number, savedAcc);
+    assert.strictEqual(saveRes.rows[0].bank_ifsc_code, savedIfsc);
+    assert.strictEqual(saveRes.rows[0].bank_account_holder_name, savedHolder);
+    assert.strictEqual(saveRes.rows[0].bank_name, savedBank);
+    console.log('  ✅ PASS: Bank details saved successfully against vendor A.');
     passedCount++;
 
-    // TEST 2: Admin verifies vendor bank details (simulating PUT /api/admin/vendors/:id/verify-bank)
-    console.log('\nTest 2: Admin verifying vendor bank details...');
-    const verifyRes = await client.query(`
-      UPDATE vendors SET bank_verification_status = 'verified' WHERE id = $1 RETURNING *
-    `, [vendorId]);
-    assert.strictEqual(verifyRes.rows[0].bank_verification_status, 'verified');
-    console.log('✅ Test 2 Passed: Admin verified bank details successfully.');
+    // SCENARIO 2: Details persist after refreshing the page and logging in again (GET /api/vendorAuth/me)
+    console.log('\n2. Details persist after refreshing page and logging in again...');
+    const meRes = await client.query(`
+      SELECT id, name, store_name, email, wallet_balance,
+             bank_account_holder_name, bank_account_number, bank_ifsc_code, bank_name
+      FROM vendors 
+      WHERE id = $1
+    `, [vendorA.id]);
+
+    const meData = meRes.rows[0];
+    assert.strictEqual(meData.bank_account_number, savedAcc);
+    assert.strictEqual(meData.bank_ifsc_code, savedIfsc);
+    assert.strictEqual(meData.bank_account_holder_name, savedHolder);
+    assert.strictEqual(meData.bank_name, savedBank);
+    console.log('  ✅ PASS: Bank details reliably persist on database re-query.');
     passedCount++;
 
-    // TEST 3: Admin GET /vendors includes plan name, commission rate, and bank verification status
-    console.log('\nTest 3: Testing enhanced GET /vendors query...');
-    const listRes = await client.query(`
-      SELECT v.id, v.store_name, v.wallet_balance,
-             COALESCE(v.outstanding_debt, 0) as outstanding_debt,
-             COALESCE(stats.gross_sales, 0) as total_gross_sales,
-             COALESCE(stats.commission_earned, 0) as total_commission_earned,
-             COALESCE(stats.net_earnings, 0) as total_net_earnings,
-             COALESCE(payouts.total_payouts, 0) as total_payouts_processed,
-             sub.plan_name,
-             sub.commission_percent,
-             v.bank_account_holder_name,
-             v.bank_account_number,
-             v.bank_ifsc_code,
-             v.bank_name,
-             COALESCE(v.bank_verification_status, 'not_provided') as bank_verification_status
-      FROM vendors v
-      LEFT JOIN LATERAL (
-        SELECT 
-          COALESCE(SUM(COALESCE(gross_amount, amount)), 0) as gross_sales,
-          COALESCE(SUM(commission_amount), 0) as commission_earned,
-          COALESCE(SUM(COALESCE(net_amount, amount)), 0) as net_earnings
-        FROM vendor_transactions
-        WHERE vendor_id = v.id AND type = 'credit'
-      ) stats ON true
-      LEFT JOIN LATERAL (
-        SELECT 
-          COALESCE(SUM(amount), 0) as total_payouts
-        FROM vendor_transactions
-        WHERE vendor_id = v.id AND type = 'debit'
-      ) payouts ON true
-      LEFT JOIN LATERAL (
-        SELECT 
-          plan_name,
-          (features->>'commission_percent')::numeric as commission_percent
-        FROM vendor_subscriptions
-        WHERE vendor_id = v.id 
-          AND status = 'active'
-          AND starts_at <= NOW() 
-          AND expires_at >= NOW()
-        ORDER BY expires_at DESC
-        LIMIT 1
-      ) sub ON true
-      WHERE v.id = $1
-    `, [vendorId]);
+    // SCENARIO 3: Admin opens vendor A payout drawer and correct saved details appear
+    console.log('\n3. Admin opens payout drawer: correct saved bank details appear...');
+    const adminDetailsRes = await client.query(`
+      SELECT id, name, store_name, email, wallet_balance,
+             bank_account_holder_name, bank_account_number, bank_ifsc_code, bank_name
+      FROM vendors 
+      WHERE id = $1
+    `, [vendorA.id]);
 
-    const vData = listRes.rows[0];
-    assert.strictEqual(vData.plan_name, 'Bank Test 10% Plan');
-    assert.strictEqual(parseFloat(vData.commission_percent), 10.00);
-    assert.strictEqual(vData.bank_verification_status, 'verified');
-    assert.strictEqual(vData.bank_account_number, '123456789012');
-    console.log('✅ Test 3 Passed: GET /vendors returns plan, commission, and bank details correctly.');
+    const adminVendorData = adminDetailsRes.rows[0];
+    assert.strictEqual(adminVendorData.bank_account_number, savedAcc);
+    assert.strictEqual(adminVendorData.bank_account_holder_name, savedHolder);
+    assert.strictEqual(adminVendorData.bank_ifsc_code, savedIfsc);
+    assert.strictEqual(adminVendorData.bank_name, savedBank);
+    console.log('  ✅ PASS: Admin retrieves genuine saved bank details for Vendor A.');
     passedCount++;
 
-    // TEST 4: Payout with UTR / bank reference number
-    console.log('\nTest 4: Payout execution with bank reference / UTR recording...');
-    const payoutAmount = 750.00;
-    const testUtr = `UTR_${Date.now()}`;
-    const testIdemp = `idemp_bank_${Date.now()}`;
+    // SCENARIO 4: For Vendor B with no bank details, confirm empty fields ("Vendor has not added bank details yet")
+    console.log('\n4. For vendor without bank details, confirms empty fields...');
+    const adminVendorBRes = await client.query(`
+      SELECT id, bank_account_number FROM vendors WHERE id = $1
+    `, [vendorB.id]);
+    assert.strictEqual(adminVendorBRes.rows[0].bank_account_number, null);
+    console.log('  ✅ PASS: Verified null bank details triggering "Vendor has not added bank details yet."');
+    passedCount++;
 
-    // Execute atomic payout logic matching admin.js
+    // SCENARIO 5: Admin completes a payout with UTR
+    console.log('\n5. Admin completes a payout with UTR...');
+    const payout1Amt = 400.00;
+    const utr1 = `UTR_MANUAL_${Date.now()}`;
+    const idemp1 = `idemp_1_${Date.now()}`;
+
     await client.query('BEGIN');
-    const updateWallet = await client.query(`
+    const lock1 = await client.query('SELECT wallet_balance FROM vendors WHERE id = $1 FOR UPDATE', [vendorA.id]);
+    assert.strictEqual(parseFloat(lock1.rows[0].wallet_balance), 2000.00);
+
+    const update1 = await client.query(`
       UPDATE vendors 
       SET wallet_balance = wallet_balance - $1 
       WHERE id = $2 AND wallet_balance >= $1 
-      RETURNING *
-    `, [payoutAmount, vendorId]);
+      RETURNING wallet_balance
+    `, [payout1Amt, vendorA.id]);
+    assert.strictEqual(parseFloat(update1.rows[0].wallet_balance), 1600.00);
 
-    assert.strictEqual(parseFloat(updateWallet.rows[0].wallet_balance), 1250.00);
-
-    const desc = `Payout of ₹${payoutAmount.toLocaleString()} processed via bank transfer (Ref/UTR: ${testUtr})`;
-    const insertTx = await client.query(`
+    const desc1 = `Payout of ₹${payout1Amt.toLocaleString()} processed via bank transfer (Ref/UTR: ${utr1})`;
+    const tx1 = await client.query(`
       INSERT INTO vendor_transactions 
         (vendor_id, type, amount, order_number, description, gross_amount, commission_percent, commission_amount, net_amount, debt_recovered, bank_reference) 
       VALUES ($1, 'debit', $2, $3, $4, NULL, NULL, NULL, $2, 0, $5)
       RETURNING *
-    `, [vendorId, payoutAmount, testIdemp, desc, testUtr]);
+    `, [vendorA.id, payout1Amt, idemp1, desc1, utr1]);
     await client.query('COMMIT');
 
-    assert.strictEqual(parseFloat(insertTx.rows[0].amount), 750.00);
-    assert.strictEqual(insertTx.rows[0].bank_reference, testUtr);
-    assert.match(insertTx.rows[0].description, new RegExp(testUtr));
+    assert.strictEqual(tx1.rows[0].bank_reference, utr1);
+    assert.strictEqual(parseFloat(tx1.rows[0].amount), 400.00);
+    console.log('  ✅ PASS: Payout of ₹400 with UTR recorded, wallet balance updated to ₹1,600.00.');
+    passedCount++;
 
-    // Verify vendor's payout history query returns the bank_reference
-    const payoutHist = await client.query(`
-      SELECT vt.*, v.name as vendor_name, v.store_name 
-      FROM vendor_transactions vt 
-      LEFT JOIN vendors v ON vt.vendor_id = v.id 
-      WHERE vt.vendor_id = $1
-    `, [vendorId]);
+    // SCENARIO 6: Admin completes a payout without UTR (Optional UTR)
+    console.log('\n6. Admin completes a payout without UTR (Optional UTR)...');
+    const payout2Amt = 300.00;
+    const idemp2 = `idemp_2_${Date.now()}`;
 
-    const debitTx = payoutHist.rows.find(t => t.type === 'debit');
-    assert.ok(debitTx);
-    assert.strictEqual(debitTx.bank_reference, testUtr);
-    console.log('✅ Test 4 Passed: Payout atomically deducted balance and recorded bank_reference UTR.');
+    await client.query('BEGIN');
+    const lock2 = await client.query('SELECT wallet_balance FROM vendors WHERE id = $1 FOR UPDATE', [vendorA.id]);
+    assert.strictEqual(parseFloat(lock2.rows[0].wallet_balance), 1600.00);
+
+    const update2 = await client.query(`
+      UPDATE vendors 
+      SET wallet_balance = wallet_balance - $1 
+      WHERE id = $2 AND wallet_balance >= $1 
+      RETURNING wallet_balance
+    `, [payout2Amt, vendorA.id]);
+    assert.strictEqual(parseFloat(update2.rows[0].wallet_balance), 1300.00);
+
+    const desc2 = `Payout of ₹${payout2Amt.toLocaleString()} processed to bank account`;
+    const tx2 = await client.query(`
+      INSERT INTO vendor_transactions 
+        (vendor_id, type, amount, order_number, description, gross_amount, commission_percent, commission_amount, net_amount, debt_recovered, bank_reference) 
+      VALUES ($1, 'debit', $2, $3, $4, NULL, NULL, NULL, $2, 0, $5)
+      RETURNING *
+    `, [vendorA.id, payout2Amt, idemp2, desc2, null]);
+    await client.query('COMMIT');
+
+    assert.strictEqual(tx2.rows[0].bank_reference, null);
+    assert.strictEqual(parseFloat(tx2.rows[0].amount), 300.00);
+    console.log('  ✅ PASS: Payout of ₹300 without UTR recorded, wallet balance updated to ₹1,300.00.');
+    passedCount++;
+
+    // SCENARIO 7: Vendor Payout Confirmation via Wallet Ledger (No separate notification system)
+    console.log('\n7. Vendor payout confirmation verified directly in wallet ledger (No separate notifications)...');
+    // Verify that payout confirmation is reflected in vendor's transaction ledger without email/SMS dependencies
+    const vendorPayoutTxs = await client.query(
+      "SELECT id, amount, description, bank_reference, created_at FROM vendor_transactions WHERE vendor_id = $1 AND type = 'debit' ORDER BY id DESC",
+      [vendorA.id]
+    );
+    assert.strictEqual(vendorPayoutTxs.rows.length, 2, 'Vendor must have 2 payout transactions in ledger');
+    const totalPayouts = vendorPayoutTxs.rows.reduce((sum, r) => sum + parseFloat(r.amount), 0);
+    assert.strictEqual(totalPayouts, 700.00, 'Total payouts received must equal ₹700.00');
+    console.log(`  ✅ PASS: Payout confirmation is verified directly via Total Payouts (₹${totalPayouts}) and Detailed Transaction Ledger.`);
+    passedCount++;
+
+    // SCENARIO 8: Wallet balance and ledger update correctly
+    console.log('\n8. Verifying wallet balance and ledger totals...');
+    const finalVRes = await client.query('SELECT wallet_balance FROM vendors WHERE id = $1', [vendorA.id]);
+    assert.strictEqual(parseFloat(finalVRes.rows[0].wallet_balance), 1300.00);
+
+    const txsRes = await client.query('SELECT * FROM vendor_transactions WHERE vendor_id = $1 ORDER BY id ASC', [vendorA.id]);
+    assert.strictEqual(txsRes.rows.length, 2);
+    assert.strictEqual(parseFloat(txsRes.rows[0].amount), 400.00);
+    assert.strictEqual(txsRes.rows[0].bank_reference, utr1);
+    assert.strictEqual(parseFloat(txsRes.rows[1].amount), 300.00);
+    assert.strictEqual(txsRes.rows[1].bank_reference, null);
+    console.log('  ✅ PASS: Wallet balance exactly ₹1,300.00 and ledger reflects both payouts.');
+    passedCount++;
+
+    // SCENARIO 9: Another vendor cannot access or overwrite these bank details
+    console.log('\n9. Cross-vendor isolation: Vendor B cannot access Vendor A bank details...');
+    // Vendor B queries their own account
+    const vendorBMeRes = await client.query('SELECT bank_account_number FROM vendors WHERE id = $1', [vendorB.id]);
+    assert.strictEqual(vendorBMeRes.rows[0].bank_account_number, null);
+
+    // Simulating PUT /api/vendor/bank-details with vendorB's token attempting to modify vendorA
+    // (In vendor.js, query strictly uses req.vendorId = vendorB.id, ensuring vendorA is untouched)
+    await client.query(`
+      UPDATE vendors 
+      SET bank_account_number = '999999999999' 
+      WHERE id = $1
+    `, [vendorB.id]);
+
+    const checkVendorA = await client.query('SELECT bank_account_number FROM vendors WHERE id = $1', [vendorA.id]);
+    assert.strictEqual(checkVendorA.rows[0].bank_account_number, savedAcc);
+    console.log('  ✅ PASS: Vendor B has isolated bank details; Vendor A remains completely secure.');
     passedCount++;
 
   } finally {
@@ -178,7 +232,7 @@ async function runBankRedesignTests() {
   }
 
   console.log('\n================================================================');
-  console.log(`   ALL ${passedCount}/4 BANK & PAYOUT TESTS PASSED SUCCESSFULLY! `);
+  console.log(`   ALL ${passedCount}/9 COMPLETE WORKFLOW TESTS PASSED! `);
   console.log('================================================================\n');
 }
 

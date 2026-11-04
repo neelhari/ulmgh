@@ -391,8 +391,9 @@ export function AdminOrdersPage() {
                   <tr>
                       <td>
                           <div style="font-size: 9pt; color: #555555; margin-top: 8px; line-height: 1.5;">
-                              <strong style="font-size: 20px;"><span style="color: #fe6603;">Ind</span><span style="color: #036e26;">basket</span></strong><br>
-                              1-1-738, Vinayaka temple road<br>
+                              <strong style="font-size: 20px; color: #022A21;">ULMGH-369</strong><br>
+                              D.No: 70/126-G-3-6-1, Near Beerappa Swamy Temple, Raja Nagar, Kallur, Kurnool<br>
+                              Pin -518003, Andhra Pradesh, India<br>
                               Phone: +91 90326 75205 | Email: ulmgh369@gmail.com<br>
                               <small style="color: #888;">Scope: ${activeTab === "admin" ? "Platform / In-House Fulfillment" : "Vendor Fulfillment"}</small>
                           </div>
@@ -418,9 +419,10 @@ export function AdminOrdersPage() {
                   <td class="from-box">
                       <div class="section-heading">From Address</div>
                       <div class="address-box">
-                          <strong><span style="color: #fe6603;">Ind</span><span style="color: #036e26;">basket</span></strong><br>
-                          1-1-738, Vinayaka temple road,<br>
-                          Koratla, Telangana, India<br>
+                          <strong>ULMGH-369</strong><br>
+                          D.No: 70/126-G-3-6-1,<br>
+                          Near Beerappa Swamy Temple, Raja Nagar, Kallur, Kurnool<br>
+                          Pin -518003, Andhra Pradesh, India<br>
                           <strong>Phone:</strong> +91 90326 75205
                       </div>
                   </td>

@@ -17,7 +17,7 @@ export function AdminVendorWalletsPage() {
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [planFilter, setPlanFilter] = useState('ALL');
-  const [bankStatusFilter, setBankStatusFilter] = useState('ALL');
+  const [bankFilter, setBankFilter] = useState('ALL');
   const [debtFilter, setDebtFilter] = useState('ALL');
   const [balanceFilter, setBalanceFilter] = useState('ALL');
   const [sortField, setSortField] = useState('balance');
@@ -37,10 +37,10 @@ export function AdminVendorWalletsPage() {
   const [payoutUtr, setPayoutUtr] = useState('');
   const [payoutConfirmed, setPayoutConfirmed] = useState(false);
   const [payoutLoading, setPayoutLoading] = useState(false);
+  const [loadingBankDetails, setLoadingBankDetails] = useState(false);
 
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
   const [selectedVendorDetails, setSelectedVendorDetails] = useState(null);
-  const [updatingBankStatus, setUpdatingBankStatus] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -102,8 +102,9 @@ export function AdminVendorWalletsPage() {
 
         const matchesPlan = planFilter === 'ALL' || (v.plan_name || 'No Active Plan') === planFilter;
         
-        const bankStatus = v.bank_verification_status || 'not_provided';
-        const matchesBank = bankStatusFilter === 'ALL' || bankStatus === bankStatusFilter;
+        let matchesBank = true;
+        if (bankFilter === 'BANK_ADDED') matchesBank = Boolean(v.bank_account_number);
+        else if (bankFilter === 'NO_BANK') matchesBank = !v.bank_account_number;
 
         const debt = parseFloat(v.outstanding_debt || 0);
         const matchesDebt = debtFilter === 'ALL' || 
@@ -141,7 +142,7 @@ export function AdminVendorWalletsPage() {
         }
         return sortOrder === 'asc' ? valA - valB : valB - valA;
       });
-  }, [vendors, searchTerm, planFilter, bankStatusFilter, debtFilter, balanceFilter, sortField, sortOrder]);
+  }, [vendors, searchTerm, planFilter, bankFilter, debtFilter, balanceFilter, sortField, sortOrder]);
 
   // Filtered Ledger Transactions
   const filteredLedger = useMemo(() => {
@@ -170,13 +171,34 @@ export function AdminVendorWalletsPage() {
     });
   }, [payouts, ledgerVendorFilter, ledgerTypeFilter, ledgerSalesTypeFilter, ledgerStartDate, ledgerEndDate]);
 
-  // Open Payout Drawer
-  const openPayoutDrawer = (vendor) => {
+  // Open Payout Drawer and fetch fresh vendor bank details from backend
+  const openPayoutDrawer = async (vendor) => {
     setSelectedVendorForPayout(vendor);
     setPayoutAmount(vendor.wallet_balance || '');
     setPayoutUtr('');
     setPayoutConfirmed(false);
     setPayoutModalOpen(true);
+    setLoadingBankDetails(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BACKEND_URL}/admin/vendors/${vendor.id}/bank-details`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.vendor) {
+          setSelectedVendorForPayout(prev => ({
+            ...prev,
+            ...data.vendor
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch fresh bank details:', err);
+    } finally {
+      setLoadingBankDetails(false);
+    }
   };
 
   // Open Details Drawer
@@ -185,7 +207,7 @@ export function AdminVendorWalletsPage() {
     setDetailDrawerOpen(true);
   };
 
-  // Execute Payout with UTR / Reference
+  // Execute Payout with optional UTR / Reference
   const handlePayoutSubmit = async (e) => {
     e.preventDefault();
     if (!selectedVendorForPayout) return;
@@ -199,10 +221,6 @@ export function AdminVendorWalletsPage() {
     }
     if (amt > balance) {
       toast.error(`Payout amount (₹${amt}) cannot exceed available balance (₹${balance})`);
-      return;
-    }
-    if (!payoutUtr.trim()) {
-      toast.error('Please enter the manual bank transfer reference number or UTR');
       return;
     }
     if (!payoutConfirmed) {
@@ -224,7 +242,7 @@ export function AdminVendorWalletsPage() {
         },
         body: JSON.stringify({ 
           amount: amt,
-          reference: payoutUtr.trim(),
+          reference: payoutUtr.trim() || undefined,
           idempotency_key: payoutKey 
         })
       });
@@ -242,110 +260,6 @@ export function AdminVendorWalletsPage() {
     } finally {
       setPayoutLoading(false);
     }
-  };
-
-  // Update Bank Details Verification Status
-  const handleVerifyBankStatus = async (vendorId, newStatus) => {
-    setUpdatingBankStatus(true);
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${BACKEND_URL}/admin/vendors/${vendorId}/verify-bank`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status: newStatus })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(`Bank details status updated to ${newStatus}`);
-        setVendors(prev => prev.map(v => v.id === vendorId ? { ...v, bank_verification_status: newStatus } : v));
-        if (selectedVendorDetails?.id === vendorId) {
-          setSelectedVendorDetails(prev => ({ ...prev, bank_verification_status: newStatus }));
-        }
-      } else {
-        toast.error(data.error || 'Failed to update bank status');
-      }
-    } catch (err) {
-      toast.error('Failed to update bank verification status');
-    } finally {
-      setUpdatingBankStatus(false);
-    }
-  };
-
-  // Export Vendors CSV
-  const exportVendorsCSV = () => {
-    const headers = [
-      'Vendor ID', 'Store Name', 'Vendor Name', 'Email', 'Active Plan', 'Commission %',
-      'Gross Sales', 'Legacy Sales', 'Tracked Sales', 'Platform Commission',
-      'Net Earnings', 'Outstanding Debt', 'Available Balance', 'Total Payouts', 'Bank Status', 'Bank Account', 'Bank IFSC'
-    ];
-
-    const rows = filteredVendors.map(v => [
-      v.id,
-      `"${(v.store_name || '').replace(/"/g, '""')}"`,
-      `"${(v.name || '').replace(/"/g, '""')}"`,
-      `"${(v.email || '').replace(/"/g, '""')}"`,
-      `"${(v.plan_name || 'No Active Plan').replace(/"/g, '""')}"`,
-      v.commission_percent != null ? `${v.commission_percent}%` : 'N/A',
-      parseFloat(v.total_gross_sales || 0).toFixed(2),
-      parseFloat(v.legacy_sales || 0).toFixed(2),
-      parseFloat(v.commission_tracked_sales || 0).toFixed(2),
-      parseFloat(v.total_commission_earned || 0).toFixed(2),
-      parseFloat(v.total_net_earnings || 0).toFixed(2),
-      parseFloat(v.outstanding_debt || 0).toFixed(2),
-      parseFloat(v.wallet_balance || 0).toFixed(2),
-      parseFloat(v.total_payouts_processed || 0).toFixed(2),
-      v.bank_verification_status || 'not_provided',
-      `"${(v.bank_account_number || '').replace(/"/g, '""')}"`,
-      `"${(v.bank_ifsc_code || '').replace(/"/g, '""')}"`
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `vendor_financial_report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Vendors financial report exported');
-  };
-
-  // Export Ledger CSV
-  const exportLedgerCSV = () => {
-    const headers = [
-      'Transaction ID', 'Date', 'Vendor ID', 'Store Name', 'Type', 'Order Number',
-      'Gross Amount', 'Commission Rate %', 'Commission Deducted', 'Debt Recovered', 'Net Amount',
-      'Bank Reference / UTR', 'Description'
-    ];
-
-    const rows = filteredLedger.map(t => [
-      t.id,
-      new Date(t.created_at).toISOString(),
-      t.vendor_id,
-      `"${(t.store_name || t.vendor_name || '').replace(/"/g, '""')}"`,
-      t.type,
-      `"${(t.order_number || '').replace(/"/g, '""')}"`,
-      t.gross_amount != null ? parseFloat(t.gross_amount).toFixed(2) : '',
-      t.commission_percent != null ? `${t.commission_percent}%` : '',
-      t.commission_amount != null ? parseFloat(t.commission_amount).toFixed(2) : '',
-      parseFloat(t.debt_recovered || 0).toFixed(2),
-      parseFloat(t.amount || 0).toFixed(2),
-      `"${(t.bank_reference || '').replace(/"/g, '""')}"`,
-      `"${(t.description || '').replace(/"/g, '""')}"`
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `financial_ledger_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Transaction ledger exported');
   };
 
   return (
@@ -369,13 +283,6 @@ export function AdminVendorWalletsPage() {
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh Data</span>
-          </button>
-          <button
-            onClick={activeTab === 'vendors' ? exportVendorsCSV : exportLedgerCSV}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#022A21] rounded-lg hover:bg-[#033c2f] transition-colors shadow-2xs"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
           </button>
         </div>
       </div>
@@ -508,18 +415,17 @@ export function AdminVendorWalletsPage() {
               </select>
             </div>
 
-            {/* Bank Status Filter */}
+            {/* Bank Details Filter */}
             <div className="flex items-center gap-1.5">
-              <span className="text-slate-500 font-medium">Bank Status:</span>
+              <span className="text-slate-500 font-medium">Bank Details:</span>
               <select
-                value={bankStatusFilter}
-                onChange={(e) => setBankStatusFilter(e.target.value)}
+                value={bankFilter}
+                onChange={(e) => setBankFilter(e.target.value)}
                 className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 focus:outline-none"
               >
-                <option value="ALL">All Statuses</option>
-                <option value="verified">Verified</option>
-                <option value="pending">Pending</option>
-                <option value="not_provided">Not Provided</option>
+                <option value="ALL">All Vendors</option>
+                <option value="BANK_ADDED">Bank Details Added</option>
+                <option value="NO_BANK">No Bank Details</option>
               </select>
             </div>
 
@@ -586,7 +492,7 @@ export function AdminVendorWalletsPage() {
                     <th className="px-4 py-3.5 text-right">Net Earned</th>
                     <th className="px-4 py-3.5 text-right">Debt</th>
                     <th className="px-4 py-3.5 text-right">Available Balance</th>
-                    <th className="px-4 py-3.5 text-center">Bank Status</th>
+                    <th className="px-4 py-3.5 text-center">Bank Details</th>
                     <th className="px-4 py-3.5 text-center">Action</th>
                   </tr>
                 </thead>
@@ -680,19 +586,15 @@ export function AdminVendorWalletsPage() {
                             </span>
                           </td>
 
-                          {/* Bank Details Status */}
+                          {/* Bank Details */}
                           <td className="px-4 py-3.5 text-center">
-                            {bankStatus === 'verified' ? (
+                            {vendor.bank_account_number ? (
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                                <CheckCircle2 className="w-3 h-3" /> Verified
-                              </span>
-                            ) : bankStatus === 'pending' ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                                <Clock className="w-3 h-3" /> Pending
+                                <CheckCircle2 className="w-3 h-3" /> Bank Added
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
-                                Not Provided
+                                Not Added
                               </span>
                             )}
                           </td>
@@ -1004,22 +906,11 @@ export function AdminVendorWalletsPage() {
                     <Building2 className="w-4 h-4 text-slate-600" />
                     <span className="font-bold text-slate-800 text-xs">Beneficiary Bank Account Details</span>
                   </div>
-                  {selectedVendorForPayout.bank_verification_status === 'verified' ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                      <CheckCircle2 className="w-3 h-3" /> Verified Account
-                    </span>
-                  ) : selectedVendorForPayout.bank_verification_status === 'pending' ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                      <Clock className="w-3 h-3" /> Pending Verification
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
-                      Not Provided
-                    </span>
-                  )}
                 </div>
 
-                {selectedVendorForPayout.bank_account_number ? (
+                {loadingBankDetails ? (
+                  <p className="text-slate-400 text-xs italic py-2">Loading bank details...</p>
+                ) : selectedVendorForPayout.bank_account_number ? (
                   <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100 text-[11px]">
                     <div>
                       <span className="text-slate-400 block text-[10px]">Account Holder</span>
@@ -1042,10 +933,7 @@ export function AdminVendorWalletsPage() {
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px] flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-bold">Bank details not submitted by vendor yet</p>
-                      <p className="text-[10px] text-amber-700 mt-0.5">
-                        Please verify the vendor's bank account or UPI details directly via phone/email before executing your bank transfer.
-                      </p>
+                      <p className="font-bold">Vendor has not added bank details yet.</p>
                     </div>
                   </div>
                 )}
@@ -1085,18 +973,17 @@ export function AdminVendorWalletsPage() {
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    Bank Transfer Reference / UTR Number <span className="text-red-500">*</span>
+                    Bank Transfer Reference / UTR Number <span className="text-slate-400 font-normal">(Optional)</span>
                   </label>
                   <input
                     type="text"
-                    required
-                    placeholder="e.g. UTR1234567890 / IMPS Ref ID"
+                    placeholder="e.g. UTR1234567890 / IMPS Ref ID (Optional)"
                     value={payoutUtr}
                     onChange={(e) => setPayoutUtr(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#fe6603]"
                   />
                   <span className="text-[10px] text-slate-400 mt-1 block">
-                    Mandatory audit reference from your bank transfer receipt
+                    Optional reference from your bank transfer receipt
                   </span>
                 </div>
 
@@ -1109,7 +996,7 @@ export function AdminVendorWalletsPage() {
                       className="mt-0.5 rounded border-slate-300 text-[#fe6603] focus:ring-[#fe6603]"
                     />
                     <span className="text-[11px] text-slate-700 font-medium select-none">
-                      I confirm that I have transferred ₹{parseFloat(payoutAmount || 0).toLocaleString()} to this vendor from my bank portal, and the UTR / Reference provided above is genuine.
+                      I confirm that I have transferred ₹{parseFloat(payoutAmount || 0).toLocaleString()} to this vendor from my bank portal.
                     </span>
                   </label>
                 </div>
@@ -1126,7 +1013,7 @@ export function AdminVendorWalletsPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={payoutLoading || !payoutConfirmed || !payoutUtr.trim()}
+                  disabled={payoutLoading || !payoutConfirmed || !payoutAmount || parseFloat(payoutAmount) <= 0}
                   className="flex-1 bg-[#fe6603] text-white py-2.5 rounded-xl font-bold hover:bg-[#e55c00] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs flex items-center justify-center gap-2"
                 >
                   {payoutLoading ? (
@@ -1135,7 +1022,10 @@ export function AdminVendorWalletsPage() {
                       <span>Recording Payout...</span>
                     </>
                   ) : (
-                    <span>Confirm & Record Payout</span>
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Confirm Pay</span>
+                    </>
                   )}
                 </button>
               </div>
@@ -1221,26 +1111,6 @@ export function AdminVendorWalletsPage() {
                     <Building2 className="w-4 h-4 text-slate-600" />
                     <span>Beneficiary Bank Account</span>
                   </h4>
-                  <div className="flex items-center gap-2">
-                    {selectedVendorDetails.bank_verification_status !== 'verified' && (
-                      <button
-                        onClick={() => handleVerifyBankStatus(selectedVendorDetails.id, 'verified')}
-                        disabled={updatingBankStatus}
-                        className="px-2.5 py-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100"
-                      >
-                        Verify Account
-                      </button>
-                    )}
-                    {selectedVendorDetails.bank_verification_status === 'verified' && (
-                      <button
-                        onClick={() => handleVerifyBankStatus(selectedVendorDetails.id, 'pending')}
-                        disabled={updatingBankStatus}
-                        className="px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200"
-                      >
-                        Mark Unverified
-                      </button>
-                    )}
-                  </div>
                 </div>
 
                 {selectedVendorDetails.bank_account_number ? (
@@ -1263,7 +1133,7 @@ export function AdminVendorWalletsPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-slate-400 text-xs italic">No bank details on file for this vendor.</p>
+                  <p className="text-slate-400 text-xs italic">Vendor has not added bank details yet.</p>
                 )}
               </div>
 
