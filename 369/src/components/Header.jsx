@@ -192,7 +192,13 @@ function DesktopFullHeader({ cartCount, wishlistCount, token, user, handleLogout
 
           {/* Centered Logo */}
           <Link to="/" className="shrink-0 flex items-center justify-center mx-4 group lg:mx-0 relative">
-            <img src={logo} alt="Logo" className="relative z-10 h-20 md:h-28 lg:h-32 w-auto max-w-[320px] lg:max-w-[400px] object-contain transition-all duration-500 group-hover:scale-105 filter drop-shadow-md" />
+            <div className="bg-white rounded-2xl p-1.5 shadow-sm border border-gray-100/90 group-hover:shadow-md group-hover:border-orange-200/80 transition-all duration-300 flex items-center justify-center">
+              <img
+                src={logo}
+                alt="ULMGH-369"
+                className="h-16 md:h-18 lg:h-20 w-auto max-w-[220px] object-contain rounded-xl transition-all duration-300 group-hover:scale-102"
+              />
+            </div>
           </Link>
 
           {/* Right Action Icons & Search */}
@@ -463,7 +469,9 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
 
               <div className="p-4 flex items-center justify-between border-b border-gray-100 bg-orange-50/50">
                 <div className="flex items-center gap-3">
-                  <img src={logo} alt="Logo" className="h-24 w-auto max-w-[240px] object-contain" />
+                  <div className="bg-white rounded-2xl p-1.5 shadow-sm border border-orange-100/80 flex items-center justify-center">
+                    <img src={logo} alt="ULMGH-369" className="h-16 w-auto max-w-[200px] object-contain rounded-xl" />
+                  </div>
                 </div>
                 <button onClick={() => setMobileMenuOpen(false)} className="p-2 text-gray-500 hover:text-gray-900 bg-white hover:bg-gray-100 rounded-full border border-gray-200 transition-colors shadow-sm">
                   <X className="w-5 h-5" />
@@ -561,8 +569,18 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
                     <h1 className="text-gray-900 font-bold text-[17px] tracking-wide bg-white/80 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm">{title}</h1>
                   </div>
                 ) : (
-                  <Link to="/" className="flex items-center transition-all duration-300">
-                    <img src={logo} alt="Logo" className={`w-auto object-contain transition-all duration-300 ${isScrolled ? 'h-9 ml-0 mt-0' : 'h-20 -ml-2 mt-[-8px]'}`} />
+                  <Link to="/" className="flex items-center transition-all duration-300 group">
+                    <div className={`bg-white/95 backdrop-blur-xs rounded-2xl p-1.5 shadow-md border border-white/90 transition-all duration-300 flex items-center justify-center ${
+                      isScrolled ? 'h-10 px-2' : 'h-14 px-2.5'
+                    }`}>
+                      <img
+                        src={logo}
+                        alt="ULMGH-369"
+                        className={`w-auto object-contain rounded-xl transition-all duration-300 ${
+                          isScrolled ? 'h-7' : 'h-11'
+                        }`}
+                      />
+                    </div>
                   </Link>
                 )}
               </div>
