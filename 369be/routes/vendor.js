@@ -431,6 +431,46 @@ router.get('/transactions', async (req, res) => {
   }
 });
 
+// --- Vendor Bank Details ---
+router.put('/bank-details', async (req, res) => {
+  const { bank_account_holder_name, bank_account_number, bank_ifsc_code, bank_name } = req.body;
+  if (!bank_account_number || !bank_ifsc_code) {
+    return res.status(400).json({ error: 'Bank account number and IFSC code are required' });
+  }
+
+  const cleanAccNum = String(bank_account_number).trim();
+  const cleanIfsc = String(bank_ifsc_code).trim().toUpperCase();
+  const cleanHolder = String(bank_account_holder_name || '').trim();
+  const cleanBankName = String(bank_name || '').trim();
+
+  if (cleanAccNum.length < 8 || cleanAccNum.length > 25) {
+    return res.status(400).json({ error: 'Bank account number must be between 8 and 25 digits' });
+  }
+  if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(cleanIfsc)) {
+    return res.status(400).json({ error: 'Please enter a valid 11-character Indian IFSC code (e.g. HDFC0001234)' });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE vendors 
+       SET bank_account_holder_name = $1,
+           bank_account_number = $2,
+           bank_ifsc_code = $3,
+           bank_name = $4,
+           bank_verification_status = 'pending'
+       WHERE id = $5
+       RETURNING id, name, store_name, bank_account_holder_name, bank_account_number, bank_ifsc_code, bank_name, bank_verification_status`,
+      [cleanHolder, cleanAccNum, cleanIfsc, cleanBankName, req.vendorId]
+    );
+    res.json({
+      message: 'Bank details saved and submitted for verification',
+      vendor: result.rows[0]
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Vendor Support Agents ---
 const bcrypt = require('bcryptjs');
 

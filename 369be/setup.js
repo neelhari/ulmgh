@@ -45,6 +45,11 @@ async function setup() {
     ALTER TABLE vendors ADD COLUMN IF NOT EXISTS pickup_version INTEGER DEFAULT 1;
     ALTER TABLE vendors ADD COLUMN IF NOT EXISTS historical_shiprocket_pickups JSONB DEFAULT '[]'::jsonb;
     ALTER TABLE vendors ADD COLUMN IF NOT EXISTS outstanding_debt NUMERIC(10,2) DEFAULT 0.00;
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS bank_account_holder_name VARCHAR(150);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR(50);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS bank_ifsc_code VARCHAR(20);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS bank_name VARCHAR(100);
+    ALTER TABLE vendors ADD COLUMN IF NOT EXISTS bank_verification_status VARCHAR(50) DEFAULT 'not_provided';
 
     CREATE TABLE IF NOT EXISTS otps (
       id SERIAL PRIMARY KEY,
@@ -249,6 +254,7 @@ async function setup() {
     ALTER TABLE vendor_transactions ADD COLUMN IF NOT EXISTS commission_amount NUMERIC(10,2);
     ALTER TABLE vendor_transactions ADD COLUMN IF NOT EXISTS net_amount NUMERIC(10,2);
     ALTER TABLE vendor_transactions ADD COLUMN IF NOT EXISTS debt_recovered NUMERIC(10,2) DEFAULT 0.00;
+    ALTER TABLE vendor_transactions ADD COLUMN IF NOT EXISTS bank_reference VARCHAR(100);
 
     ALTER TABLE order_fulfillments ADD COLUMN IF NOT EXISTS commission_percent NUMERIC(5,2);
     ALTER TABLE order_fulfillments ADD COLUMN IF NOT EXISTS commission_amount NUMERIC(10,2);

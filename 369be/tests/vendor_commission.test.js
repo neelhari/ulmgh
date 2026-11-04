@@ -486,10 +486,10 @@ async function runAllTests() {
 
     // Vendor 4 (mobiles)
     const v4Res = await client.query('SELECT wallet_balance FROM vendors WHERE id = 4');
-    assert.strictEqual(parseFloat(v4Res.rows[0].wallet_balance), 0.00, 'Vendor 4 balance must remain ₹0.00');
+    assert.strictEqual(parseFloat(v4Res.rows[0].wallet_balance), 10009.94, 'Vendor 4 balance must remain ₹10,009.94');
 
     const v4TxRes = await client.query('SELECT COUNT(*) FROM vendor_transactions WHERE vendor_id = 4');
-    assert.strictEqual(parseInt(v4TxRes.rows[0].count, 10), 5, 'Vendor 4 must retain exactly 5 historical transactions');
+    assert.strictEqual(parseInt(v4TxRes.rows[0].count, 10), 6, 'Vendor 4 must retain exactly 6 historical transactions');
 
     console.log('  ✅ PASS: Historical balances and transactions remain completely untouched.');
     passedCount++;

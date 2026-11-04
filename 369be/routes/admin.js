@@ -181,6 +181,27 @@ router.put('/orders/:id/status', authMiddleware, adminOnly, async (req, res) => 
   }
 });
 
+// PUT /api/admin/vendors/:id/verify-bank
+router.put('/vendors/:id/verify-bank', authMiddleware, adminOnly, async (req, res) => {
+  const { status } = req.body;
+  const allowed = ['verified', 'pending', 'rejected', 'not_provided'];
+  if (!allowed.includes(status)) {
+    return res.status(400).json({ error: 'Invalid verification status' });
+  }
+
+  try {
+    const result = await pool.query(
+      'UPDATE vendors SET bank_verification_status = $1 WHERE id = $2 RETURNING id, name, store_name, bank_verification_status',
+      [status, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Vendor not found' });
+    res.json({ message: 'Bank verification status updated', vendor: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 const shiprocket = require('../utils/shiprocket');
 
 // POST /api/admin/fulfillments/:id/ship
@@ -563,6 +584,15 @@ router.get('/vendors', authMiddleware, adminOnly, async (req, res) => {
              COALESCE(stats.net_earnings, 0) as total_net_earnings,
              COALESCE(stats.legacy_sales, 0) as legacy_sales,
              COALESCE(stats.commission_tracked_sales, 0) as commission_tracked_sales,
+             COALESCE(payouts.total_payouts, 0) as total_payouts_processed,
+             sub.plan_name,
+             sub.commission_percent,
+             sub.subscription_expires_at,
+             v.bank_account_holder_name,
+             v.bank_account_number,
+             v.bank_ifsc_code,
+             v.bank_name,
+             COALESCE(v.bank_verification_status, 'not_provided') as bank_verification_status,
              v.pickup_contact_name, v.pickup_phone, v.pickup_line1, v.pickup_line2,
              v.pickup_city, v.pickup_state, v.pickup_pincode, v.shiprocket_pickup_nickname,
              v.is_pickup_synced, v.shiprocket_pickup_id, v.pickup_synced_at, v.pickup_sync_error, v.pickup_version
@@ -577,6 +607,25 @@ router.get('/vendors', authMiddleware, adminOnly, async (req, res) => {
         FROM vendor_transactions
         WHERE vendor_id = v.id AND type = 'credit'
       ) stats ON true
+      LEFT JOIN LATERAL (
+        SELECT 
+          COALESCE(SUM(amount), 0) as total_payouts
+        FROM vendor_transactions
+        WHERE vendor_id = v.id AND type = 'debit'
+      ) payouts ON true
+      LEFT JOIN LATERAL (
+        SELECT 
+          plan_name,
+          (features->>'commission_percent')::numeric as commission_percent,
+          expires_at as subscription_expires_at
+        FROM vendor_subscriptions
+        WHERE vendor_id = v.id 
+          AND status = 'active'
+          AND starts_at <= NOW() 
+          AND expires_at >= NOW()
+        ORDER BY expires_at DESC
+        LIMIT 1
+      ) sub ON true
       ORDER BY v.created_at DESC
     `);
     res.json({ vendors: result.rows });
@@ -666,6 +715,12 @@ router.get('/vendor-orders', authMiddleware, adminOnly, async (req, res) => {
 
 router.post('/vendors/:id/payout', authMiddleware, adminOnly, async (req, res) => {
   const { amount } = req.body;
+  const reference = (
+    req.body.reference ||
+    req.body.utr ||
+    req.body.bank_reference ||
+    ''
+  ).toString().trim();
   const idempotencyKey = (
     req.headers['idempotency-key'] ||
     req.body.idempotency_key ||
@@ -741,16 +796,20 @@ router.post('/vendors/:id/payout', authMiddleware, adminOnly, async (req, res) =
     }
 
     // 6. Record payout in vendor_transactions within the same transaction
-    const desc = `Payout of ₹${payoutAmount.toLocaleString()} processed to bank account`;
-    await client.query(
+    const desc = reference
+      ? `Payout of ₹${payoutAmount.toLocaleString()} processed via bank transfer (Ref/UTR: ${reference})`
+      : `Payout of ₹${payoutAmount.toLocaleString()} processed to bank account`;
+
+    const txRes = await client.query(
       `INSERT INTO vendor_transactions 
-         (vendor_id, type, amount, order_number, description, gross_amount, commission_percent, commission_amount, net_amount, debt_recovered) 
-       VALUES ($1, 'debit', $2, $3, $4, NULL, NULL, NULL, $2, 0)`,
-      [vendor.id, payoutAmount, idempotencyKey || null, desc]
+         (vendor_id, type, amount, order_number, description, gross_amount, commission_percent, commission_amount, net_amount, debt_recovered, bank_reference) 
+       VALUES ($1, 'debit', $2, $3, $4, NULL, NULL, NULL, $2, 0, $5)
+       RETURNING *`,
+      [vendor.id, payoutAmount, idempotencyKey || null, desc, reference || null]
     );
 
     await client.query('COMMIT');
-    res.json({ message: 'Payout successful', vendor: updateRes.rows[0] });
+    res.json({ message: 'Payout successful', vendor: updateRes.rows[0], transaction: txRes.rows[0] });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Payout processing error:', err);

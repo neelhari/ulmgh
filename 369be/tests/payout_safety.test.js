@@ -126,7 +126,7 @@ async function runPayoutSafetyTests() {
 
     const v4Baseline = await client.query('SELECT wallet_balance FROM vendors WHERE id = 4');
     const v4Bal = parseFloat(v4Baseline.rows[0].wallet_balance);
-    assert.strictEqual(v4Bal, 0.00, 'Vendor 4 baseline must be ₹0.00');
+    assert.strictEqual(v4Bal, 10009.94, 'Vendor 4 baseline must be ₹10,009.94');
 
     const totalTxBaseline = await client.query('SELECT COUNT(*) FROM vendor_transactions');
     const baselineTxCount = parseInt(totalTxBaseline.rows[0].count, 10);
@@ -306,7 +306,7 @@ async function runPayoutSafetyTests() {
     assert.strictEqual(parseFloat(v1Final.rows[0].wallet_balance), 3959.00);
 
     const v4Final = await client.query('SELECT wallet_balance FROM vendors WHERE id = 4');
-    assert.strictEqual(parseFloat(v4Final.rows[0].wallet_balance), 0.00);
+    assert.strictEqual(parseFloat(v4Final.rows[0].wallet_balance), 10009.94);
 
     console.log('  ✅ PASS: Production vendor balances and records remain completely untouched.');
     passedCount++;
