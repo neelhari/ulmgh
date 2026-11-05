@@ -404,7 +404,7 @@ router.post('/categories/selected', async (req, res) => {
       });
     }
 
-    // 2. Validate against active subscription plan limit
+    // 2. Validate against active subscription plan limit (Mandatory exact selection)
     const subRes = await pool.query(
       'SELECT features FROM vendor_subscriptions WHERE vendor_id=$1 ORDER BY created_at DESC LIMIT 1',
       [req.vendorId]
@@ -413,8 +413,12 @@ router.post('/categories/selected', async (req, res) => {
     
     if (categoryLimit) {
       const limit = parseInt(categoryLimit, 10);
-      if (!isNaN(limit) && cleanCategories.length > limit) {
-        return res.status(400).json({ error: `You can only select up to ${limit} categories on your current plan.` });
+      if (!isNaN(limit)) {
+        if (cleanCategories.length !== limit) {
+          return res.status(400).json({ 
+            error: `You must select exactly ${limit} categories according to your subscription plan. Currently selected: ${cleanCategories.length}.` 
+          });
+        }
       }
     }
 

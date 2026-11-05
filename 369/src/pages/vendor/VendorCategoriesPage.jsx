@@ -66,6 +66,7 @@ export function VendorCategoriesPage() {
   }, []);
 
   const isLocked = savedCategories.length > 0;
+  const isExactSelection = categoryLimit ? selectedCategories.length === categoryLimit : selectedCategories.length > 0;
   const limitReached = categoryLimit && selectedCategories.length >= categoryLimit;
 
   // Initial Onboarding Category Selection
@@ -84,6 +85,11 @@ export function VendorCategoriesPage() {
   };
 
   const handleSaveInitial = async () => {
+    if (categoryLimit && selectedCategories.length !== categoryLimit) {
+      toast.error(`Please select all ${categoryLimit} categories before saving. Currently selected: ${selectedCategories.length}.`);
+      return;
+    }
+
     if (selectedCategories.length === 0) {
       toast.error('Please select at least one category.');
       return;
@@ -212,8 +218,14 @@ export function VendorCategoriesPage() {
         
         {categoryLimit && (
           <div className="self-start sm:self-auto bg-gradient-to-r from-orange-50 to-orange-100/50 border border-orange-200 px-3.5 sm:px-5 py-2 sm:py-3 rounded-xl sm:rounded-[16px] flex items-center gap-2.5 sm:gap-3 shadow-xs">
-            <span className="text-xs sm:text-sm font-bold text-gray-600 uppercase tracking-wider">Plan Limit:</span>
-            <span className="font-extrabold text-[#fe6603] text-sm sm:text-lg">{categoryLimit} Categories</span>
+            <span className="text-xs sm:text-sm font-bold text-gray-600 uppercase tracking-wider">
+              {isLocked ? 'Plan Limit:' : 'Selection Counter:'}
+            </span>
+            <span className="font-extrabold text-[#fe6603] text-sm sm:text-lg">
+              {isLocked 
+                ? `${categoryLimit} Categories` 
+                : `${selectedCategories.length} of ${categoryLimit} categories selected`}
+            </span>
           </div>
         )}
       </div>
@@ -293,11 +305,24 @@ export function VendorCategoriesPage() {
                   </button>
                 </div>
               ) : (
-                <div className="flex justify-end">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  {categoryLimit && (
+                    <div className="w-full sm:w-auto text-xs sm:text-sm font-semibold text-gray-700 flex items-center justify-center sm:justify-start gap-2 bg-gray-50/90 px-4 py-2.5 rounded-xl border border-gray-200/80">
+                      <span className={`inline-block w-2.5 h-2.5 rounded-full ${isExactSelection ? 'bg-green-500 animate-pulse' : 'bg-[#fe6603]'}`}></span>
+                      <span>
+                        <strong className="text-gray-900">{selectedCategories.length} of {categoryLimit}</strong> categories selected
+                        {!isExactSelection && (
+                          <span className="text-[#fe6603] font-medium ml-1">
+                            (Select {categoryLimit - selectedCategories.length > 0 ? `${categoryLimit - selectedCategories.length} more` : 'exact limit'} to enable save)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
                   <button 
                     onClick={handleSaveInitial} 
-                    disabled={saving || selectedCategories.length === 0}
-                    className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#fe6603] to-[#ff7b23] text-white font-bold rounded-xl sm:rounded-[16px] text-xs sm:text-sm hover:shadow-[0_8px_20px_rgba(254,102,3,0.3)] hover:-translate-y-0.5 active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:transform-none disabled:hover:shadow-none min-h-[46px] flex items-center justify-center shadow-sm"
+                    disabled={saving || !isExactSelection}
+                    className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#fe6603] to-[#ff7b23] text-white font-bold rounded-xl sm:rounded-[16px] text-xs sm:text-sm hover:shadow-[0_8px_20px_rgba(254,102,3,0.3)] hover:-translate-y-0.5 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none disabled:hover:shadow-none min-h-[46px] flex items-center justify-center shadow-sm"
                   >
                     {saving ? 'Saving...' : 'Save Category Selection'}
                   </button>

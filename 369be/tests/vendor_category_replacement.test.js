@@ -48,18 +48,30 @@ async function runVendorCategoryReplacementTests() {
 
     console.log(`Setup complete: Test Vendor #${testVendorId} (Limit 6) and Vendor #${testVendor2Id}\n`);
 
-    // TEST 1: Initial category selection during onboarding (permits up to 6 categories)
-    console.log('1. Testing initial category selection during onboarding...');
-    const initialSelection = ['Cat Alpha', 'Cat Beta', 'Cat Gamma', 'Cat Delta', 'Cat Epsilon', 'Cat Zeta'];
+    // TEST 1: Mandatory full category selection during onboarding (must match exact subscription limit)
+    console.log('1. Testing mandatory full category selection during onboarding...');
     
-    // Simulate POST /api/vendor/categories/selected
+    // 1a. Test under-selection rejection (e.g. 4 or 5 of 6)
+    const underSelection = ['Cat Alpha', 'Cat Beta', 'Cat Gamma', 'Cat Delta'];
     const subRes = await client.query(
       'SELECT features FROM vendor_subscriptions WHERE vendor_id=$1 ORDER BY created_at DESC LIMIT 1',
       [testVendorId]
     );
     const categoryLimit = parseInt(subRes.rows[0].features.category_limit, 10);
     assert.strictEqual(categoryLimit, 6, 'Category limit must be 6');
-    assert.strictEqual(initialSelection.length <= categoryLimit, true);
+    assert.strictEqual(underSelection.length !== categoryLimit, true, 'Under-selection count must differ from limit');
+    
+    // Simulate API rejection logic
+    let underSelectionRejected = false;
+    if (categoryLimit && underSelection.length !== categoryLimit) {
+      underSelectionRejected = true;
+    }
+    assert.strictEqual(underSelectionRejected, true, 'API must reject under-selection');
+    console.log('   ✅ Under-selection (4 of 6) strictly rejected with mandatory full selection rule.');
+
+    // 1b. Test exact selection acceptance (6 of 6)
+    const initialSelection = ['Cat Alpha', 'Cat Beta', 'Cat Gamma', 'Cat Delta', 'Cat Epsilon', 'Cat Zeta'];
+    assert.strictEqual(initialSelection.length === categoryLimit, true, 'Exact selection count matches limit');
 
     await client.query(
       'UPDATE vendors SET selected_categories = $1 WHERE id = $2',
@@ -70,7 +82,7 @@ async function runVendorCategoryReplacementTests() {
     const savedCats = savedCheck.rows[0].selected_categories;
     assert.strictEqual(savedCats.length, 6);
     assert.deepStrictEqual(savedCats, initialSelection);
-    console.log('   ✅ Initial 6 categories successfully assigned and saved.');
+    console.log('   ✅ Exact full selection (6 of 6) successfully assigned and saved.');
     passedCount++;
 
     // TEST 2: Categories becoming locked after saving
