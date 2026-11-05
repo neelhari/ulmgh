@@ -27,7 +27,7 @@ export function AboutPage() {
       {/* Hero Section */}
       <div className="relative w-full h-[400px] md:h-[550px] overflow-hidden">
         <img 
-          src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=1600&q=80" 
+          src="/about-us-hero.jpg" 
           alt="ULMGH-369 Ecosystem" 
           className="w-full h-full object-cover"
         />
@@ -56,7 +56,7 @@ export function AboutPage() {
         </div>
       </div>
 
-      <div className="max-w-[1400px] mx-auto px-6 md:px-16 py-16 md:py-24 space-y-24">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 md:px-16 py-12 md:py-24 space-y-16 md:space-y-24">
         
         {/* Our Story & Vision */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
@@ -216,15 +216,15 @@ export function AboutPage() {
         </div>
 
         {/* Join Community & Contact */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 pt-8 pb-16">
-          <div className="bg-white p-10 rounded-3xl border border-gray-100 shadow-xl">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 pt-8 pb-16">
+          <div className="bg-white p-6 sm:p-10 rounded-3xl border border-gray-100 shadow-xl overflow-hidden">
             <h3 className="text-2xl font-bold text-[#022A21] mb-4 font-serif">Join the ULMGH-369 Community</h3>
             <p className="text-gray-600 mb-6">
               Subscribe to receive exclusive offers, new product updates, special opportunities, and inspiring stories from businesses across our growing marketplace.
             </p>
-            <div className="flex gap-2">
-              <input type="email" placeholder="Email Address" className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-brand-orange" />
-              <button className="bg-brand-orange text-white px-6 py-3 rounded-xl font-bold hover:bg-orange-600 transition-colors">
+            <div className="flex flex-col sm:flex-row gap-3 w-full">
+              <input type="email" placeholder="Email Address" className="w-full sm:flex-1 min-w-0 px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-brand-orange text-sm md:text-base" />
+              <button className="w-full sm:w-auto shrink-0 bg-brand-orange text-white px-6 py-3 rounded-xl font-bold hover:bg-orange-600 transition-colors text-sm md:text-base">
                 Subscribe
               </button>
             </div>
@@ -237,7 +237,7 @@ export function AboutPage() {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-[#022A21] to-[#054335] p-10 rounded-3xl text-white shadow-xl flex flex-col justify-center">
+          <div className="bg-gradient-to-br from-[#022A21] to-[#054335] p-6 sm:p-10 rounded-3xl text-white shadow-xl flex flex-col justify-center">
             <h3 className="text-2xl font-bold mb-6 font-serif">Contact Us</h3>
             <div className="space-y-4 text-gray-200">
               <p className="leading-relaxed">
