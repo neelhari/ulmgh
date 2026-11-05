@@ -1,4 +1,10 @@
-const admin = require('firebase-admin');
+let admin = null;
+try {
+  admin = require('firebase-admin');
+} catch (loadErr) {
+  console.warn('⚠️ [Firebase] firebase-admin could not be loaded:', loadErr.message);
+}
+
 const pool = require('../db');
 
 let firebaseApp = null;
@@ -7,6 +13,9 @@ let mockMessagingInstance = null;
 // Initialize Firebase Admin SDK safely
 function initFirebase() {
   if (firebaseApp) return firebaseApp;
+  if (!admin) {
+    return null;
+  }
 
   try {
     let credential = null;

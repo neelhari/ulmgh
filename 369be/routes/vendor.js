@@ -639,10 +639,6 @@ router.get('/categories', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // --- Vendor Transactions (Payout History) ---
 router.get('/transactions', async (req, res) => {

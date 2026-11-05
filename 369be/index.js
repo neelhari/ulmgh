@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config({ path: path.join(__dirname, '.env.newdb') });
 
 if (!process.env.JWT_SECRET) {
   console.error('FATAL: JWT_SECRET environment variable is missing. Server refusing to start.');
@@ -48,8 +50,6 @@ app.set('trust proxy', 1);
 
 const { generalLimiter } = require('./utils/rateLimiter');
 app.use(generalLimiter);
-
-const path = require('path');
 
 app.use('/api/general', require('./routes/general'));
 app.use('/api/auth', require('./routes/auth'));
