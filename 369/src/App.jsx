@@ -17,6 +17,7 @@ import { CategoryListingPage } from './pages/CategoryListingPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
 import { CartPage } from './pages/CartPage';
 import { CheckoutPage } from './pages/CheckoutPage';
+import { RazorpayTestPage } from './pages/RazorpayTestPage';
 import { OrderTrackingPage } from './pages/OrderTrackingPage';
 import { WishlistPage } from './pages/WishlistPage';
 import { ProfilePage } from './pages/ProfilePage';
@@ -164,6 +165,7 @@ function AnimatedAppRoutes() {
         <Route path="/product/:id" element={<PageTransition><ProductDetailPage /></PageTransition>} />
         <Route path="/cart" element={<PageTransition><CartPage /></PageTransition>} />
         <Route path="/checkout" element={<PageTransition><CheckoutPage /></PageTransition>} />
+        <Route path="/razorpay-test" element={<PageTransition><RazorpayTestPage /></PageTransition>} />
         <Route path="/order-tracking/:orderId" element={<PageTransition><OrderTrackingPage /></PageTransition>} />
         {!Capacitor.isNativePlatform() && (
           <>
