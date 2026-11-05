@@ -196,7 +196,7 @@ function App() {
       StatusBar.setBackgroundColor({ color: '#ff8500' }).catch(() => {});
       StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
       initializeSocialLogin().catch(() => {});
-      initPushNotifications().catch(() => {});
+      initPushNotifications(isVendorApp ? 'vendor' : 'customer').catch(() => {});
     }
   }, [fetchData]);
 

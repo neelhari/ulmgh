@@ -1,5 +1,6 @@
 const pool = require('../db');
 const shiprocket = require('../utils/shiprocket');
+const { sendPushToCustomer } = require('./firebase');
 
 /**
  * Returns the configured default admin warehouse pickup nickname from app_settings or env.
@@ -520,6 +521,33 @@ async function shipFulfillment(fulfillmentId, options = {}, clientOverride = nul
     // 10. Update parent order status dynamically
     await updateParentOrderStatus(f.order_id, dbClient);
 
+    // Notify customer about package dispatch
+    try {
+      const parentOrderRes = await dbClient.query('SELECT user_id, order_number FROM orders WHERE id = $1', [f.order_id]);
+      if (parentOrderRes.rows.length > 0 && parentOrderRes.rows[0].user_id) {
+        const pOrder = parentOrderRes.rows[0];
+        sendPushToCustomer(
+          pOrder.user_id,
+          {
+            title: 'Package Dispatched! 📦',
+            body: `Package #${f.fulfillment_number} for Order #${pOrder.order_number} has been scheduled for dispatch via ${courierName}.`,
+            data: {
+              orderId: String(f.order_id),
+              fulfillmentId: String(f.id),
+              awb: String(awbCode),
+              screen: 'order-tracking',
+              type: 'package_dispatched'
+            }
+          },
+          `dispatch:${f.id}:${awbCode}`,
+          String(f.order_id),
+          'package_dispatched'
+        ).catch(pushErr => console.error('[Push] Fulfillment dispatch push error:', pushErr));
+      }
+    } catch (pushErr) {
+      console.error('[Push] Failed to trigger dispatch push notification:', pushErr);
+    }
+
     return {
       success: true,
       status: newStatus,
@@ -860,6 +888,32 @@ async function cancelFulfillmentPackage(fulfillmentId, options = {}, dbClient = 
     await updateParentOrderStatus(f.order_id, client);
 
     if (isOwnClient) await client.query('COMMIT');
+
+    // Notify customer about package cancellation
+    try {
+      const parentOrderRes = await (dbClient.query ? dbClient.query('SELECT user_id, order_number FROM orders WHERE id = $1', [f.order_id]) : client.query('SELECT user_id, order_number FROM orders WHERE id = $1', [f.order_id]));
+      if (parentOrderRes.rows.length > 0 && parentOrderRes.rows[0].user_id) {
+        const pOrder = parentOrderRes.rows[0];
+        sendPushToCustomer(
+          pOrder.user_id,
+          {
+            title: 'Package Cancelled',
+            body: `Package #${f.fulfillment_number} from Order #${pOrder.order_number} has been cancelled.`,
+            data: {
+              orderId: String(f.order_id),
+              fulfillmentId: String(f.id),
+              screen: 'order-tracking',
+              type: 'package_cancelled'
+            }
+          },
+          `cancel_package:${f.id}`,
+          String(f.order_id),
+          'package_cancelled'
+        ).catch(pushErr => console.error('[Push] Fulfillment cancel push error:', pushErr));
+      }
+    } catch (pushErr) {
+      console.error('[Push] Failed to trigger cancel package push notification:', pushErr);
+    }
 
     return {
       success: true,

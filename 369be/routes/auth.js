@@ -12,6 +12,7 @@ const { authLimiter, loginLimiter } = require('../utils/rateLimiter');
 const { validate, signupSchema, loginSchema, addressSchema, orderSchema } = require('../utils/validation');
 const { OAuth2Client } = require('google-auth-library');
 const fulfillmentService = require('../services/fulfillmentService');
+const { sendPushToCustomer, sendPushToVendor } = require('../services/firebase');
 
 const googleClient = new OAuth2Client();
 
@@ -776,6 +777,23 @@ router.post('/orders', authMiddleware, validate(orderSchema), async (req, res) =
       if (vendorRes.rows[0]) {
         sendOrderEmailToVendor(vendorRes.rows[0].email, vendorRes.rows[0].name, orderNumber, data.items, data.grossAmount, address, pMethod);
       }
+      // Send vendor push notification
+      sendPushToVendor(
+        vid,
+        {
+          title: 'New Order Received! 🛍️',
+          body: `You received a new order #${orderNumber} for ₹${data.grossAmount.toLocaleString()}`,
+          data: {
+            orderId: String(result.rows[0].id),
+            orderNumber: String(orderNumber),
+            screen: 'vendor-orders',
+            type: 'new_order'
+          }
+        },
+        `new_order:${orderNumber}:vendor:${vid}`,
+        String(result.rows[0].id),
+        'new_order'
+      ).catch(e => console.error('[Push] Vendor new order notification error:', e));
     }
     
     // Send customer and admin emails
@@ -783,6 +801,24 @@ router.post('/orders', authMiddleware, validate(orderSchema), async (req, res) =
     const userRes = await pool.query('SELECT email FROM users WHERE id = $1', [req.user.id]);
     const userEmail = userRes.rows[0]?.email || address?.email;
     sendOrderEmailToCustomer(userEmail, orderNumber, calculatedTotal, address, verifiedItems, pMethod);
+
+    // Send customer push notification
+    sendPushToCustomer(
+      req.user.id,
+      {
+        title: 'Order Confirmed! 🎉',
+        body: `Your order #${orderNumber} has been placed successfully. Total: ₹${parseFloat(calculatedTotal).toLocaleString()}`,
+        data: {
+          orderId: String(result.rows[0].id),
+          orderNumber: String(orderNumber),
+          screen: 'order-tracking',
+          type: 'order_confirmed'
+        }
+      },
+      `order_confirmed:${orderNumber}:customer:${req.user.id}`,
+      String(result.rows[0].id),
+      'order_confirmed'
+    ).catch(e => console.error('[Push] Customer order confirmation error:', e));
 
     res.json({ success: true, order: result.rows[0] });
   } catch (err) {

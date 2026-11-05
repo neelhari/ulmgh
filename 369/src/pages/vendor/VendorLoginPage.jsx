@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Store, ArrowLeft } from 'lucide-react';
 import { toast } from 'react-toastify';
 import logo from '../../assets/logo.png';
+import { syncDeviceToken } from '../../utils/pushNotifications';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
 
@@ -39,6 +40,7 @@ export function VendorLoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to login');
       localStorage.setItem("vendor_token", data.token);
+      syncDeviceToken('vendor');
       toast.success("Welcome back!");
       navigate('/vendor');
     } catch (err) {

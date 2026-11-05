@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api from '../utils/api';
 import { performGoogleLogin } from '../utils/socialAuth';
+import { syncDeviceToken, unregisterCurrentDeviceToken } from '../utils/pushNotifications';
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL?.replace('/api', '') || 'http://localhost:5000';
 
@@ -32,6 +33,7 @@ export const useAuthStore = create((set, get) => ({
       const { data } = await api.post('/auth/verify-otp', { email, otp });
       localStorage.setItem('token', data.token);
       set({ token: data.token, user: data.user, loading: false });
+      syncDeviceToken('customer');
       return { success: true };
     } catch (err) {
       const error = err.response?.data?.error || 'OTP verification failed';
@@ -46,6 +48,7 @@ export const useAuthStore = create((set, get) => ({
       const { data } = await api.post('/auth/login', { email, password });
       localStorage.setItem('token', data.token);
       set({ token: data.token, user: data.user, loading: false });
+      syncDeviceToken('customer');
       return { success: true, role: data.user.role };
     } catch (err) {
       const error = err.response?.data?.error || 'Login failed';
@@ -100,6 +103,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const { data } = await api.get('/auth/profile');
       set({ user: data.user, addresses: data.addresses, orders: data.orders, loading: false });
+      syncDeviceToken('customer');
     } catch {
       set({ loading: false });
     }
@@ -136,6 +140,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   logout: () => {
+    unregisterCurrentDeviceToken('customer');
     localStorage.removeItem('token');
     set({ user: null, token: null, addresses: [], orders: [] });
   },
@@ -150,6 +155,7 @@ export const useAuthStore = create((set, get) => ({
       const { data } = await api.post('/auth/google', { idToken });
       localStorage.setItem('token', data.token);
       set({ token: data.token, user: data.user, loading: false });
+      syncDeviceToken('customer');
       return { success: true, role: data.user.role };
     } catch (err) {
       set({ loading: false });
@@ -175,5 +181,6 @@ export const useAuthStore = create((set, get) => ({
   handleGoogleCallback: (token, user) => {
     localStorage.setItem('token', token);
     set({ token, user });
+    syncDeviceToken('customer');
   },
 }));

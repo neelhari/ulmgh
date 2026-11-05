@@ -14,7 +14,7 @@ router.use(vendorAuthMiddleware);
 // --- Stats ---
 router.get('/stats', async (req, res) => {
   try {
-    const productsRes = await pool.query('SELECT COUNT(*) FROM products WHERE vendor_id = $1', [req.vendorId]);
+    const productsRes = await pool.query('SELECT COUNT(*) FROM products WHERE vendor_id = $1 AND COALESCE(is_deleted, false) = false', [req.vendorId]);
     
     // For vendor orders, we look at orders that have items with this vendor's ID.
     // In PostgreSQL, you can use jsonb array elements to query.
@@ -57,7 +57,7 @@ router.get('/stats', async (req, res) => {
 // --- Products ---
 router.get('/products', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC', [req.vendorId]);
+    const result = await pool.query('SELECT * FROM products WHERE vendor_id = $1 AND COALESCE(is_deleted, false) = false ORDER BY created_at DESC', [req.vendorId]);
     const products = result.rows;
     
     const subRes = await pool.query('SELECT features FROM vendor_subscriptions WHERE vendor_id = $1 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1', [req.vendorId]);
@@ -100,7 +100,7 @@ router.post('/products', async (req, res) => {
     if (productLimit) {
       const limit = parseInt(productLimit, 10);
       if (!isNaN(limit)) {
-        const countRes = await pool.query('SELECT COUNT(*) FROM products WHERE vendor_id=$1', [req.vendorId]);
+        const countRes = await pool.query('SELECT COUNT(*) FROM products WHERE vendor_id=$1 AND COALESCE(is_deleted, false) = false', [req.vendorId]);
         const count = parseInt(countRes.rows[0].count, 10);
         if (count >= limit) {
           return res.status(403).json({ error: `You have reached your subscription limit of ${limit} products.` });
@@ -349,43 +349,62 @@ router.post('/fulfillments/:id/sync-status', async (req, res) => {
 });
 
 
-// --- Categories Selection (Subscription Limit) ---
+// --- Categories Selection (Subscription Limit & Category Locking) ---
 router.get('/categories/selected', async (req, res) => {
   try {
-    // Get vendor's selected categories
+    // 1. Get vendor's selected categories
     const vendorRes = await pool.query('SELECT selected_categories FROM vendors WHERE id=$1', [req.vendorId]);
     const selected = vendorRes.rows[0]?.selected_categories || [];
 
-    // Get subscription category limit
+    // 2. Get active subscription category limit
     const subRes = await pool.query(
-      'SELECT features FROM vendor_subscriptions WHERE vendor_id=$1 ORDER BY created_at DESC LIMIT 1',
+      'SELECT plan_name, features, expires_at FROM vendor_subscriptions WHERE vendor_id=$1 ORDER BY created_at DESC LIMIT 1',
       [req.vendorId]
     );
-    const categoryLimit = subRes.rows[0]?.features?.category_limit;
-    
+    const sub = subRes.rows[0];
+    const categoryLimit = sub?.features?.category_limit ? parseInt(sub.features.category_limit, 10) : null;
+    const isLocked = Array.isArray(selected) && selected.length > 0;
+
     res.json({ 
       selected_categories: selected,
-      category_limit: categoryLimit ? parseInt(categoryLimit, 10) : null
+      category_limit: categoryLimit,
+      is_locked: isLocked,
+      can_edit: isLocked, // Controlled replacement workflow is available when categories are locked
+      subscription: sub ? {
+        plan_name: sub.plan_name,
+        expires_at: sub.expires_at,
+        category_limit: categoryLimit
+      } : null
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// Initial Category Selection (Onboarding)
 router.post('/categories/selected', async (req, res) => {
-  const { categories, gender } = req.body;
-  if (!Array.isArray(categories)) return res.status(400).json({ error: 'categories must be an array' });
+  const { categories } = req.body;
+  if (!Array.isArray(categories)) {
+    return res.status(400).json({ error: 'categories must be an array' });
+  }
+
+  const cleanCategories = [...new Set(categories.map(c => String(c).trim()).filter(Boolean))];
+  if (cleanCategories.length === 0) {
+    return res.status(400).json({ error: 'Please select at least one category.' });
+  }
 
   try {
-    // 1. Check if vendor has already selected categories (Lock once selected)
+    // 1. Check if vendor has already selected categories (Categories are locked once selected)
     const vendorRes = await pool.query('SELECT selected_categories FROM vendors WHERE id=$1', [req.vendorId]);
     const existing = vendorRes.rows[0]?.selected_categories || [];
     
     if (existing && existing.length > 0) {
-      return res.status(400).json({ error: 'Categories are locked once selected and cannot be changed.' });
+      return res.status(400).json({ 
+        error: 'Categories are locked once selected. Use the category replacement workflow to modify categories.' 
+      });
     }
 
-    // 2. Check limits
+    // 2. Validate against active subscription plan limit
     const subRes = await pool.query(
       'SELECT features FROM vendor_subscriptions WHERE vendor_id=$1 ORDER BY created_at DESC LIMIT 1',
       [req.vendorId]
@@ -394,16 +413,219 @@ router.post('/categories/selected', async (req, res) => {
     
     if (categoryLimit) {
       const limit = parseInt(categoryLimit, 10);
-      if (!isNaN(limit) && categories.length > limit) {
-        return res.status(400).json({ error: `You can only select up to ${limit} categories.` });
+      if (!isNaN(limit) && cleanCategories.length > limit) {
+        return res.status(400).json({ error: `You can only select up to ${limit} categories on your current plan.` });
       }
     }
 
-    // 3. Save
-    await pool.query('UPDATE vendors SET selected_categories=$1 WHERE id=$2', [JSON.stringify(categories), req.vendorId]);
-    res.json({ message: 'Categories saved successfully and are now locked.', selected_categories: categories });
+    // 3. Verify all categories exist in marketplace categories
+    const catCheck = await pool.query('SELECT name FROM categories WHERE name = ANY($1)', [cleanCategories]);
+    const validNames = new Set(catCheck.rows.map(r => r.name));
+    const invalid = cleanCategories.filter(c => !validNames.has(c));
+    if (invalid.length > 0) {
+      return res.status(400).json({ error: `Invalid category requested: ${invalid.join(', ')}` });
+    }
+
+    // 4. Save and lock
+    await pool.query('UPDATE vendors SET selected_categories=$1 WHERE id=$2', [JSON.stringify(cleanCategories), req.vendorId]);
+    res.json({ message: 'Categories saved successfully and are now locked.', selected_categories: cleanCategories });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Preview Category Replacement (Non-destructive Impact Preview)
+router.post('/categories/preview-replacement', async (req, res) => {
+  const { oldCategory, newCategory } = req.body;
+
+  if (!oldCategory || !newCategory || typeof oldCategory !== 'string' || typeof newCategory !== 'string') {
+    return res.status(400).json({ error: 'Both oldCategory and newCategory are required.' });
+  }
+
+  const cleanOld = oldCategory.trim();
+  const cleanNew = newCategory.trim();
+
+  if (cleanOld === cleanNew) {
+    return res.status(400).json({ error: 'Replacement category must be different from the existing category.' });
+  }
+
+  try {
+    // 1. Validate that oldCategory is currently assigned to this vendor
+    const vendorRes = await pool.query('SELECT selected_categories FROM vendors WHERE id=$1', [req.vendorId]);
+    const currentCats = vendorRes.rows[0]?.selected_categories || [];
+
+    if (!currentCats.includes(cleanOld)) {
+      return res.status(400).json({ error: `Category '${cleanOld}' is not currently assigned to your account.` });
+    }
+
+    // 2. Validate that newCategory is NOT already assigned to this vendor
+    if (currentCats.includes(cleanNew)) {
+      return res.status(400).json({ error: `Category '${cleanNew}' is already assigned to your account.` });
+    }
+
+    // 3. Validate that newCategory exists in marketplace
+    const catCheck = await pool.query('SELECT id, name FROM categories WHERE name=$1', [cleanNew]);
+    if (catCheck.rows.length === 0) {
+      return res.status(400).json({ error: `Replacement category '${cleanNew}' does not exist in the marketplace.` });
+    }
+
+    // 4. Calculate affected product count (active products belonging to this vendor under oldCategory)
+    const prodCountRes = await pool.query(
+      `SELECT COUNT(*) as count 
+       FROM products 
+       WHERE vendor_id = $1 
+         AND category = $2 
+         AND COALESCE(is_deleted, false) = false`,
+      [req.vendorId, cleanOld]
+    );
+    const affectedCount = parseInt(prodCountRes.rows[0].count, 10);
+
+    // Fetch sample affected products for confirmation UI
+    const sampleRes = await pool.query(
+      `SELECT id, name, price, image_url 
+       FROM products 
+       WHERE vendor_id = $1 
+         AND category = $2 
+         AND COALESCE(is_deleted, false) = false
+       LIMIT 5`,
+      [req.vendorId, cleanOld]
+    );
+
+    res.json({
+      valid: true,
+      oldCategory: cleanOld,
+      newCategory: cleanNew,
+      affectedProductsCount: affectedCount,
+      sampleProducts: sampleRes.rows,
+      warning: 'Replacing this category will permanently remove your existing products under the selected category from the active marketplace.'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Atomic Category Replacement Execution
+router.post('/categories/replace', async (req, res) => {
+  const { oldCategory, newCategory, confirm } = req.body;
+
+  if (!confirm) {
+    return res.status(400).json({ error: 'Explicit confirmation is required to replace a category.' });
+  }
+
+  if (!oldCategory || !newCategory || typeof oldCategory !== 'string' || typeof newCategory !== 'string') {
+    return res.status(400).json({ error: 'Both oldCategory and newCategory are required.' });
+  }
+
+  const cleanOld = oldCategory.trim();
+  const cleanNew = newCategory.trim();
+
+  if (cleanOld === cleanNew) {
+    return res.status(400).json({ error: 'Replacement category must be different from current category.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Row-level lock on vendor to prevent race conditions
+    const vendorRes = await client.query(
+      'SELECT selected_categories FROM vendors WHERE id = $1 FOR UPDATE',
+      [req.vendorId]
+    );
+    if (vendorRes.rows.length === 0) {
+      throw { statusCode: 404, message: 'Vendor not found' };
+    }
+    const currentCats = vendorRes.rows[0]?.selected_categories || [];
+
+    // 2. Validate subscription & limit
+    const subRes = await client.query(
+      'SELECT features FROM vendor_subscriptions WHERE vendor_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [req.vendorId]
+    );
+    const categoryLimit = subRes.rows[0]?.features?.category_limit 
+      ? parseInt(subRes.rows[0].features.category_limit, 10) 
+      : null;
+
+    // 3. Verify oldCategory is currently assigned
+    if (!currentCats.includes(cleanOld)) {
+      throw { statusCode: 400, message: `Category '${cleanOld}' is not currently assigned to your account.` };
+    }
+
+    // 4. Verify newCategory is not already assigned
+    if (currentCats.includes(cleanNew)) {
+      throw { statusCode: 400, message: `Category '${cleanNew}' is already in your selected categories.` };
+    }
+
+    // 5. Verify newCategory exists in marketplace categories table
+    const catCheck = await client.query('SELECT id, name FROM categories WHERE name = $1', [cleanNew]);
+    if (catCheck.rows.length === 0) {
+      throw { statusCode: 400, message: `Replacement category '${cleanNew}' does not exist in the marketplace.` };
+    }
+
+    // 6. Build new category array with exact 1-for-1 replacement
+    const updatedCategories = currentCats.map(c => c === cleanOld ? cleanNew : c);
+
+    // Verify strict integrity: exactly same count, no duplicates
+    const uniqueCategories = [...new Set(updatedCategories)];
+    if (uniqueCategories.length !== currentCats.length) {
+      throw { statusCode: 400, message: 'Category replacement failed: duplicate category detected.' };
+    }
+
+    if (categoryLimit && uniqueCategories.length > categoryLimit) {
+      throw { statusCode: 400, message: `Category count exceeds allowed subscription limit of ${categoryLimit}.` };
+    }
+
+    // 7. Remove affected products from active marketplace availability
+    const affectedProdsRes = await client.query(
+      `SELECT id FROM products 
+       WHERE vendor_id = $1 
+         AND category = $2 
+         AND COALESCE(is_deleted, false) = false
+       FOR UPDATE`,
+      [req.vendorId, cleanOld]
+    );
+    const affectedCount = affectedProdsRes.rows.length;
+
+    if (affectedCount > 0) {
+      await client.query(
+        `UPDATE products 
+         SET is_active = false, 
+             is_deleted = true, 
+             stock = 0, 
+             status = 'archived'
+         WHERE vendor_id = $1 
+           AND category = $2 
+           AND COALESCE(is_deleted, false) = false`,
+        [req.vendorId, cleanOld]
+      );
+    }
+
+    // 8. Update vendor's selected_categories
+    await client.query(
+      'UPDATE vendors SET selected_categories = $1 WHERE id = $2',
+      [JSON.stringify(uniqueCategories), req.vendorId]
+    );
+
+    // 9. Record replacement in audit log
+    await client.query(
+      `INSERT INTO vendor_category_replacements (vendor_id, old_category, new_category, affected_products_count)
+       VALUES ($1, $2, $3, $4)`,
+      [req.vendorId, cleanOld, cleanNew, affectedCount]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      message: `Category '${cleanOld}' was successfully replaced with '${cleanNew}'.`,
+      selected_categories: uniqueCategories,
+      affected_products_removed: affectedCount
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(err.statusCode || 500).json({ error: err.message || 'Failed to replace category' });
+  } finally {
+    client.release();
   }
 });
 
@@ -413,6 +635,10 @@ router.get('/categories', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM categories ORDER BY id ASC');
     res.json({ categories: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

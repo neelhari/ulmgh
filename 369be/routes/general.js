@@ -208,6 +208,7 @@ router.get('/products', async (req, res) => {
     const result = await pool.query(`
       SELECT p.* FROM products p
       WHERE p.is_active = true
+      AND COALESCE(p.is_deleted, false) = false
       AND (
         p.vendor_id IS NULL
         OR EXISTS (

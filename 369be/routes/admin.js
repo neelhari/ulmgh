@@ -3,6 +3,7 @@ const pool = require('../db');
 const { authMiddleware } = require('./auth');
 const { syncVendorPickupWithShiprocket } = require('../services/vendorPickupService');
 const fulfillmentService = require('../services/fulfillmentService');
+const { sendPushToCustomer, sendPushToVendor } = require('../services/firebase');
 
 function adminOnly(req, res, next) {
   if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin access only' });
@@ -171,6 +172,63 @@ router.put('/orders/:id/status', authMiddleware, adminOnly, async (req, res) => 
     );
 
     await client.query('COMMIT');
+
+    const updatedOrder = updateRes.rows[0];
+    if (updatedOrder && updatedOrder.user_id) {
+      const isCancelled = status.toLowerCase() === 'cancelled';
+      const statusTitle = isCancelled ? 'Order Cancelled' : `Order Status Updated: ${status.toUpperCase()}`;
+      const statusBody = isCancelled 
+        ? `Your order #${updatedOrder.order_number} has been cancelled.`
+        : `Your order #${updatedOrder.order_number} is now ${status}.`;
+
+      sendPushToCustomer(
+        updatedOrder.user_id,
+        {
+          title: statusTitle,
+          body: statusBody,
+          data: {
+            orderId: String(updatedOrder.id),
+            orderNumber: String(updatedOrder.order_number),
+            status: String(status),
+            screen: 'order-tracking',
+            type: isCancelled ? 'order_cancelled' : 'order_status_update'
+          }
+        },
+        `order_status:${updatedOrder.id}:${status}`,
+        String(updatedOrder.id),
+        isCancelled ? 'order_cancelled' : 'order_status_update'
+      ).catch(e => console.error('[Push] Order status update push error:', e));
+
+      // If order was cancelled, also alert vendors
+      if (isCancelled) {
+        pool.query(
+          'SELECT DISTINCT vendor_id FROM order_fulfillments WHERE order_id = $1',
+          [updatedOrder.id]
+        ).then(vRes => {
+          for (const row of vRes.rows) {
+            if (row.vendor_id) {
+              sendPushToVendor(
+                row.vendor_id,
+                {
+                  title: 'Order Cancelled ⚠️',
+                  body: `Order #${updatedOrder.order_number} has been cancelled.`,
+                  data: {
+                    orderId: String(updatedOrder.id),
+                    orderNumber: String(updatedOrder.order_number),
+                    screen: 'vendor-orders',
+                    type: 'order_cancelled'
+                  }
+                },
+                `order_cancelled:${updatedOrder.id}:vendor:${row.vendor_id}`,
+                String(updatedOrder.id),
+                'order_cancelled'
+              ).catch(err => console.error('[Push] Vendor order cancel push error:', err));
+            }
+          }
+        }).catch(err => console.error('[Push] Fetch vendors for cancellation error:', err));
+      }
+    }
+
     res.json({ order: updateRes.rows[0] });
   } catch (err) {
     await client.query('ROLLBACK');

@@ -17,6 +17,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import logo from '../../assets/logo.png';
+import { syncDeviceToken, unregisterCurrentDeviceToken } from '../../utils/pushNotifications';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
 
@@ -69,6 +70,7 @@ export function VendorLayout({ children }) {
       .then((d) => {
         if (!d.vendor) { navigate("/vendor-login"); return; }
         setVendor(d.vendor);
+        syncDeviceToken('vendor');
       })
       .catch(() => navigate("/vendor-login"));
   }, [navigate]);
@@ -86,6 +88,7 @@ export function VendorLayout({ children }) {
   }, [mobileOpen]);
 
   const handleLogout = () => {
+    unregisterCurrentDeviceToken('vendor');
     localStorage.removeItem("vendor_token");
     navigate("/vendor-login");
   };
