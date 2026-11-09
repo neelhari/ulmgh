@@ -5,8 +5,12 @@ import com.getcapacitor.BridgeActivity;
 import com.razorpay.Checkout;
 import com.razorpay.PaymentData;
 import com.razorpay.PaymentResultWithDataListener;
+import ee.forgr.capacitor.social.login.ModifiedMainActivityForSocialLoginPlugin;
 
-public class MainActivity extends BridgeActivity implements PaymentResultWithDataListener {
+public class MainActivity extends BridgeActivity implements PaymentResultWithDataListener, ModifiedMainActivityForSocialLoginPlugin {
+
+    @Override
+    public void IHaveModifiedTheMainActivityForTheUseWithSocialLoginPlugin() {}
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

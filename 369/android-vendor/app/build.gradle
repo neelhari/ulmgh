@@ -16,10 +16,53 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (project.hasProperty('ULMGH_RELEASE_STORE_FILE') &&
+                project.hasProperty('ULMGH_RELEASE_STORE_PASSWORD') &&
+                project.hasProperty('ULMGH_RELEASE_KEY_ALIAS') &&
+                project.hasProperty('ULMGH_RELEASE_KEY_PASSWORD') &&
+                !project.property('ULMGH_RELEASE_STORE_FILE').toString().trim().isEmpty() &&
+                !project.property('ULMGH_RELEASE_STORE_PASSWORD').toString().trim().isEmpty() &&
+                !project.property('ULMGH_RELEASE_KEY_ALIAS').toString().trim().isEmpty() &&
+                !project.property('ULMGH_RELEASE_KEY_PASSWORD').toString().trim().isEmpty()) {
+
+                storeFile file(project.property('ULMGH_RELEASE_STORE_FILE'))
+                storeType 'PKCS12'
+                storePassword project.property('ULMGH_RELEASE_STORE_PASSWORD')
+                keyAlias project.property('ULMGH_RELEASE_KEY_ALIAS')
+                keyPassword project.property('ULMGH_RELEASE_KEY_PASSWORD')
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+gradle.taskGraph.whenReady { taskGraph ->
+    def hasReleaseBuildTask = taskGraph.allTasks.any { task ->
+        task.name.toLowerCase().contains("release") &&
+        (task.name.startsWith("assemble") || task.name.startsWith("bundle") || task.name.startsWith("package"))
+    }
+    if (hasReleaseBuildTask) {
+        def missing = []
+        if (!project.hasProperty('ULMGH_RELEASE_STORE_FILE') || project.property('ULMGH_RELEASE_STORE_FILE').toString().trim().isEmpty()) missing.add("ULMGH_RELEASE_STORE_FILE")
+        if (!project.hasProperty('ULMGH_RELEASE_STORE_PASSWORD') || project.property('ULMGH_RELEASE_STORE_PASSWORD').toString().trim().isEmpty()) missing.add("ULMGH_RELEASE_STORE_PASSWORD")
+        if (!project.hasProperty('ULMGH_RELEASE_KEY_ALIAS') || project.property('ULMGH_RELEASE_KEY_ALIAS').toString().trim().isEmpty()) missing.add("ULMGH_RELEASE_KEY_ALIAS")
+        if (!project.hasProperty('ULMGH_RELEASE_KEY_PASSWORD') || project.property('ULMGH_RELEASE_KEY_PASSWORD').toString().trim().isEmpty()) missing.add("ULMGH_RELEASE_KEY_PASSWORD")
+
+        if (!missing.isEmpty()) {
+            throw new GradleException("ULMGH Release Signing Error: Missing required release signing property/properties in ~/.gradle/gradle.properties: ${missing.join(', ')}. Release builds cannot proceed unsigned.")
+        }
+        def kFile = file(project.property('ULMGH_RELEASE_STORE_FILE'))
+        if (!kFile.exists()) {
+            throw new GradleException("ULMGH Release Signing Error: Keystore file does not exist at '${kFile.absolutePath}'.")
         }
     }
 }

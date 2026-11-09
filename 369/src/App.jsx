@@ -41,6 +41,7 @@ import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsPage } from './pages/TermsPage';
 import { ReferPage } from './pages/ReferPage';
 import { MeditationPage } from './pages/MeditationPage';
+import { DeleteAccountPage } from './pages/DeleteAccountPage';
 
 import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
@@ -181,6 +182,7 @@ function AnimatedAppRoutes() {
         <Route path="/my-orders" element={<PageTransition><MyOrdersPage /></PageTransition>} />
         <Route path="/my-addresses" element={<PageTransition><MyAddressesPage /></PageTransition>} />
         <Route path="/account-settings" element={<PageTransition><AccountSettingsPage /></PageTransition>} />
+        <Route path="/delete-account" element={<PageTransition><DeleteAccountPage /></PageTransition>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>

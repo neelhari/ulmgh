@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { ShieldCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -64,7 +65,33 @@ export function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold text-[#022A21] mb-4 font-serif">4. Contact Us</h2>
+            <h2 className="text-2xl font-bold text-[#022A21] mb-4 font-serif">4. Account and Data Deletion</h2>
+            <p className="mb-3">
+              We respect your right to control your personal data. You can request the permanent deletion of your account and associated personal data at any time through our apps or website:
+            </p>
+            <ul className="list-disc pl-6 space-y-2 mb-4">
+              <li>
+                <strong>In-App Deletion:</strong> If you are signed in, you can delete your account immediately by visiting <Link to="/account-settings" className="text-brand-orange font-semibold hover:underline">Account Settings</Link> &gt; Danger Zone &gt; Delete Account.
+              </li>
+              <li>
+                <strong>Public Web Request:</strong> You can submit a deletion request without logging in via our dedicated verification portal at <Link to="/delete-account" className="text-brand-orange font-semibold hover:underline">ulmgh-369.com/delete-account</Link> using your registered email address.
+              </li>
+            </ul>
+            <p className="mb-2"><strong>Data Deleted upon request:</strong></p>
+            <ul className="list-disc pl-6 space-y-1 mb-4">
+              <li>Profile data (name, email, phone number, and profile picture).</li>
+              <li>Saved delivery addresses and contact information.</li>
+              <li>Authentication credentials, linked Google account tokens, and active login sessions.</li>
+              <li>Push notification device tokens and OTP records.</li>
+            </ul>
+            <p className="mb-2"><strong>Data Retained for Legal Compliance:</strong></p>
+            <ul className="list-disc pl-6 space-y-1">
+              <li>Order history, financial invoice totals, and payment gateway transaction references are retained in our database strictly as required for commercial accounting, taxation, and legal recordkeeping obligations.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-2xl font-bold text-[#022A21] mb-4 font-serif">5. Contact Us</h2>
             <p>If you have questions or comments about this Privacy Policy, please contact us at:</p>
             <div className="mt-4 p-6 bg-[#f9f9f9] rounded-2xl border border-gray-100">
               <p className="font-bold text-[#022A21] mb-1">ULMGH-369</p>

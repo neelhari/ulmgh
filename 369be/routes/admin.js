@@ -50,6 +50,97 @@ router.delete('/users/:id', authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
+// GET /api/admin/deletion-requests
+router.get('/deletion-requests', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { status } = req.query;
+    let query = 'SELECT * FROM account_deletion_requests';
+    const params = [];
+    if (status) {
+      query += ' WHERE status = $1';
+      params.push(status);
+    }
+    query += ' ORDER BY created_at DESC';
+    const result = await pool.query(query, params);
+    res.json({ requests: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/deletion-requests/:id/fulfill
+router.post('/deletion-requests/:id/fulfill', authMiddleware, adminOnly, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const reqRes = await pool.query('SELECT * FROM account_deletion_requests WHERE id = $1', [id]);
+    if (!reqRes.rows.length) {
+      return res.status(404).json({ error: 'Deletion request not found' });
+    }
+    const delReq = reqRes.rows[0];
+
+    // Find user if not already attached
+    let userId = delReq.user_id;
+    if (!userId) {
+      const userRes = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [delReq.email]);
+      userId = userRes.rows[0]?.id || null;
+    }
+
+    if (userId) {
+      const anonymizedEmail = `deleted_user_${userId}_${Date.now()}@deleted.ulmgh.invalid`;
+      try {
+        await pool.query(
+          `UPDATE users
+           SET name = 'Deleted User',
+               email = $1,
+               phone = '',
+               password_hash = '',
+               google_id = NULL,
+               avatar_url = NULL,
+               is_verified = FALSE,
+               is_deleted = TRUE,
+               deleted_at = NOW()
+           WHERE id = $2`,
+          [anonymizedEmail, userId]
+        );
+      } catch (updateErr) {
+        if (updateErr.code === '42703') {
+          await pool.query(
+            `UPDATE users
+             SET name = 'Deleted User',
+                 email = $1,
+                 phone = '',
+                 password_hash = '',
+                 google_id = NULL,
+                 avatar_url = NULL,
+                 is_verified = FALSE
+             WHERE id = $2`,
+            [anonymizedEmail, userId]
+          );
+        } else {
+          throw updateErr;
+        }
+      }
+
+      await pool.query('DELETE FROM addresses WHERE user_id = $1', [userId]);
+      await pool.query('DELETE FROM otps WHERE email = $1', [delReq.email]);
+    }
+
+    await pool.query(
+      `UPDATE account_deletion_requests
+       SET status = 'completed',
+           processed_at = NOW(),
+           processed_by = $1
+       WHERE id = $2`,
+      [req.user.id, id]
+    );
+
+    res.json({ success: true, message: 'Account deletion request fulfilled successfully' });
+  } catch (err) {
+    console.error('Admin fulfill deletion request error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/admin/orders
 router.get('/orders', authMiddleware, adminOnly, async (req, res) => {
   try {

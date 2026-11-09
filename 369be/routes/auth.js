@@ -565,7 +565,10 @@ router.post('/google', loginLimiter, async (req, res) => {
 router.get('/profile', authMiddleware, async (req, res) => {
   try {
     const user = await pool.query(
-      'SELECT id, name, email, phone, avatar_url, created_at FROM users WHERE id=$1',
+      `SELECT id, name, email, phone, avatar_url, created_at,
+              (password_hash IS NOT NULL AND password_hash != '') AS has_password,
+              (google_id IS NOT NULL) AS is_google_user
+       FROM users WHERE id=$1`,
       [req.user.id]
     );
     const addresses = await pool.query('SELECT * FROM addresses WHERE user_id=$1 ORDER BY is_default DESC', [req.user.id]);
@@ -868,10 +871,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 
 // DELETE /api/auth/account
 router.delete('/account', authMiddleware, async (req, res) => {
-  const { password } = req.body;
-  if (!password) {
-    return res.status(400).json({ error: 'Password is required to delete your account' });
-  }
+  const { password, confirmation } = req.body;
 
   try {
     const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
@@ -880,13 +880,25 @@ router.delete('/account', authMiddleware, async (req, res) => {
     }
     const user = userRes.rows[0];
 
-    // 1. Verify password
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) {
-      return res.status(400).json({ error: 'Incorrect password' });
+    const hasPassword = Boolean(user.password_hash && user.password_hash.trim());
+
+    if (hasPassword) {
+      if (!password) {
+        return res.status(400).json({ error: 'Password is required to delete your account' });
+      }
+      const valid = await bcrypt.compare(password, user.password_hash);
+      if (!valid) {
+        return res.status(400).json({ error: 'Incorrect password' });
+      }
+    } else {
+      // Google-only or passwordless account: Require explicit "DELETE" confirmation
+      const confirmInput = (confirmation || password || '').toString().trim().toUpperCase();
+      if (confirmInput !== 'DELETE') {
+        return res.status(400).json({ error: 'Please type DELETE to confirm account deletion' });
+      }
     }
 
-    // 2. Anonymize user record
+    // 2. Anonymize user record & clear credentials/google linkage
     const anonymizedEmail = `deleted_user_${user.id}_${Date.now()}@deleted.ulmgh.invalid`;
     try {
       await pool.query(
@@ -895,6 +907,7 @@ router.delete('/account', authMiddleware, async (req, res) => {
              email = $1,
              phone = '',
              password_hash = '',
+             google_id = NULL,
              avatar_url = NULL,
              is_verified = FALSE,
              is_deleted = TRUE,
@@ -910,6 +923,7 @@ router.delete('/account', authMiddleware, async (req, res) => {
                email = $1,
                phone = '',
                password_hash = '',
+               google_id = NULL,
                avatar_url = NULL,
                is_verified = FALSE
            WHERE id = $2`,
@@ -932,6 +946,203 @@ router.delete('/account', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Customer account deletion error:', err);
     res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
+// POST /api/auth/deletion-request/send-code (Public)
+router.post('/deletion-request/send-code', authLimiter, async (req, res) => {
+  const { email } = req.body;
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email address is required' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const userRes = await pool.query(
+      `SELECT id, name, email FROM users
+       WHERE LOWER(email) = $1 AND (is_deleted IS NULL OR is_deleted = false)`,
+      [cleanEmail]
+    );
+
+    if (userRes.rows.length) {
+      const user = userRes.rows[0];
+      const otp = generateOTP();
+      await createOTP(user.email, otp);
+
+      try {
+        await transporter.sendMail({
+          from: `"ULMGH-369 Support" <${process.env.EMAIL_USER}>`,
+          to: user.email,
+          subject: 'ULMGH-369 Account Deletion Verification Code',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #eee; border-radius: 12px; background: #fff;">
+              <h2 style="color: #022A21; margin-top: 0;">Account Deletion Request</h2>
+              <p style="color: #555; line-height: 1.6;">
+                We received an account deletion request for your account on <strong>ULMGH-369</strong>.
+              </p>
+              <p style="color: #555; line-height: 1.6;">Your 6-digit email ownership verification code is:</p>
+              <div style="text-align: center; margin: 24px 0;">
+                <span style="display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #fe6603; background: #fff5ee; padding: 12px 28px; border-radius: 8px; border: 1px dashed #fe6603;">
+                  ${otp}
+                </span>
+              </div>
+              <p style="color: #777; font-size: 13px; line-height: 1.5;">
+                This verification code is valid for 10 minutes. If you did not request this, no action is required and your account remains safe.
+              </p>
+            </div>
+          `
+        });
+      } catch (mailErr) {
+        console.error('Failed to send deletion request OTP email:', mailErr);
+      }
+    }
+
+    // Always return generic confirmation to protect against email enumeration
+    res.json({
+      success: true,
+      message: 'If an active account exists with this email, a 6-digit verification code has been sent.'
+    });
+  } catch (err) {
+    console.error('Deletion request send-code error:', err);
+    res.status(500).json({ error: 'Server error processing deletion request' });
+  }
+});
+
+// POST /api/auth/deletion-request/confirm (Public)
+router.post('/deletion-request/confirm', authLimiter, async (req, res) => {
+  const { email, otp, phone, reason } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({ error: 'Email and verification code are required' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanOtp = otp.toString().trim();
+
+  try {
+    const otpResult = await verifyOTP(cleanEmail, cleanOtp, true);
+    if (!otpResult.valid) {
+      return res.status(400).json({ error: otpResult.error || 'Invalid or expired verification code' });
+    }
+
+    const userRes = await pool.query(
+      `SELECT id, name, email FROM users
+       WHERE LOWER(email) = $1 AND (is_deleted IS NULL OR is_deleted = false)`,
+      [cleanEmail]
+    );
+
+    const userId = userRes.rows[0]?.id || null;
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || null;
+
+    let deletionStatus = 'completed';
+    let processedAt = new Date();
+
+    if (userId) {
+      const anonymizedEmail = `deleted_user_${userId}_${Date.now()}@deleted.ulmgh.invalid`;
+      try {
+        await pool.query(
+          `UPDATE users
+           SET name = 'Deleted User',
+               email = $1,
+               phone = '',
+               password_hash = '',
+               google_id = NULL,
+               avatar_url = NULL,
+               is_verified = FALSE,
+               is_deleted = TRUE,
+               deleted_at = NOW()
+           WHERE id = $2`,
+          [anonymizedEmail, userId]
+        );
+      } catch (updateErr) {
+        if (updateErr.code === '42703') {
+          await pool.query(
+            `UPDATE users
+             SET name = 'Deleted User',
+                 email = $1,
+                 phone = '',
+                 password_hash = '',
+                 google_id = NULL,
+                 avatar_url = NULL,
+                 is_verified = FALSE
+             WHERE id = $2`,
+            [anonymizedEmail, userId]
+          );
+        } else {
+          throw updateErr;
+        }
+      }
+
+      await pool.query('DELETE FROM addresses WHERE user_id = $1', [userId]);
+      await pool.query('DELETE FROM otps WHERE email = $1', [cleanEmail]);
+    } else {
+      deletionStatus = 'pending';
+      processedAt = null;
+    }
+
+    await pool.query(
+      `INSERT INTO account_deletion_requests
+       (user_id, email, phone, reason, verification_status, verified_at, status, processed_at, ip_address)
+       VALUES ($1, $2, $3, $4, 'verified', NOW(), $5, $6, $7)`,
+      [userId, cleanEmail, phone ? String(phone).trim() : null, reason ? String(reason).trim() : null, deletionStatus, processedAt, ip]
+    );
+
+    // Notify admin
+    try {
+      await transporter.sendMail({
+        from: `"ULMGH-369 Alerts" <${process.env.EMAIL_USER}>`,
+        to: process.env.EMAIL_USER,
+        subject: `⚠️ Verified Account Deletion Request - ${cleanEmail}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+            <h3 style="color: #c00;">Verified Account Deletion Request</h3>
+            <p><strong>Email:</strong> ${cleanEmail}</p>
+            <p><strong>User ID:</strong> ${userId || 'N/A'}</p>
+            <p><strong>Phone:</strong> ${phone || 'N/A'}</p>
+            <p><strong>Reason / Comments:</strong> ${reason || 'None provided'}</p>
+            <p><strong>Verification:</strong> Email ownership verified via OTP</p>
+            <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+            <p><strong>IP:</strong> ${ip || 'N/A'}</p>
+          </div>
+        `
+      });
+    } catch (e) {
+      console.error('Failed to notify admin of verified deletion request:', e);
+    }
+
+    // Acknowledge to user
+    try {
+      await transporter.sendMail({
+        from: `"ULMGH-369 Support" <${process.env.EMAIL_USER}>`,
+        to: cleanEmail,
+        subject: 'ULMGH-369 Account Deletion Request Confirmed',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #eee; border-radius: 12px; background: #fff;">
+            <h2 style="color: #022A21; margin-top: 0;">Deletion Request Confirmed</h2>
+            <p style="color: #555; line-height: 1.6;">
+              We have received and verified your request to delete your account and personal data for <strong>${cleanEmail}</strong>.
+            </p>
+            <p style="color: #555; line-height: 1.6;">
+              Your profile information, delivery addresses, and login credentials will be removed. Past purchase and transaction records are preserved for accounting and commercial order records.
+            </p>
+            <p style="color: #777; font-size: 13px; line-height: 1.5;">
+              If you have any questions, you can contact our support team at ulmgh369@gmail.com.
+            </p>
+          </div>
+        `
+      });
+    } catch (e) {
+      console.error('Failed to send confirmation email to user:', e);
+    }
+
+    res.json({
+      success: true,
+      message: 'Your email ownership has been verified and your account deletion request has been submitted successfully.'
+    });
+  } catch (err) {
+    console.error('Deletion request confirm error:', err);
+    res.status(500).json({ error: 'Server error confirming deletion request' });
   }
 });
 

@@ -53,13 +53,25 @@ export function AccountSettingsPage() {
     setTimeout(() => setPassMsg(''), 3000);
   };
 
+  const isGoogleOnly = user?.has_password === false;
+
   const handleDeleteAccount = async (e) => {
     e.preventDefault();
-    if (!deletePassword) return setDeleteError('Password is required');
+    if (!deletePassword) {
+      return setDeleteError(isGoogleOnly ? 'Please type DELETE to confirm' : 'Password is required');
+    }
+    if (isGoogleOnly && deletePassword.trim().toUpperCase() !== 'DELETE') {
+      return setDeleteError('Please type DELETE to confirm account deletion');
+    }
     setDeleting(true);
     setDeleteError('');
     try {
-      await api.delete('/auth/account', { data: { password: deletePassword } });
+      await api.delete('/auth/account', {
+        data: {
+          password: deletePassword,
+          confirmation: deletePassword,
+        },
+      });
       setShowDeleteModal(false);
       logout();
       navigate('/');
@@ -122,36 +134,42 @@ export function AccountSettingsPage() {
         {/* Password Form */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <Lock className="w-4 h-4 text-brand-orange" /> Change Password
+            <Lock className="w-4 h-4 text-brand-orange" /> {isGoogleOnly ? 'Account Authentication' : 'Change Password'}
           </h2>
-          <form onSubmit={handlePasswordChange} className="space-y-3">
-            {[
-              { key: 'current', label: 'Current Password', show: showPass.current, toggle: () => setShowPass(p => ({ ...p, current: !p.current })) },
-              { key: 'newPass', label: 'New Password', show: showPass.new, toggle: () => setShowPass(p => ({ ...p, new: !p.new })) },
-              { key: 'confirm', label: 'Confirm New Password', show: showPass.new, toggle: null },
-            ].map(({ key, label, show, toggle }) => (
-              <div key={key}>
-                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">{label}</label>
-                <div className="relative">
-                  <input type={show ? 'text' : 'password'} value={passForm[key]}
-                    onChange={(e) => setPassForm({ ...passForm, [key]: e.target.value })}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-gray-50 pr-10" />
-                  {toggle && (
-                    <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                      {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  )}
+          {isGoogleOnly ? (
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Your account is linked with Google Sign-In. Password authentication is disabled for this account.
+            </p>
+          ) : (
+            <form onSubmit={handlePasswordChange} className="space-y-3">
+              {[
+                { key: 'current', label: 'Current Password', show: showPass.current, toggle: () => setShowPass(p => ({ ...p, current: !p.current })) },
+                { key: 'newPass', label: 'New Password', show: showPass.new, toggle: () => setShowPass(p => ({ ...p, new: !p.new })) },
+                { key: 'confirm', label: 'Confirm New Password', show: showPass.new, toggle: null },
+              ].map(({ key, label, show, toggle }) => (
+                <div key={key}>
+                  <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">{label}</label>
+                  <div className="relative">
+                    <input type={show ? 'text' : 'password'} value={passForm[key]}
+                      onChange={(e) => setPassForm({ ...passForm, [key]: e.target.value })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-gray-50 pr-10" />
+                    {toggle && (
+                      <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-            {passMsg && (
-              <p className={`text-xs font-semibold ${passMsg.includes('!') ? 'text-green-600' : 'text-red-500'}`}>{passMsg}</p>
-            )}
-            <button type="submit" disabled={saving}
-              className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl text-sm hover:bg-gray-800 transition-colors disabled:opacity-60">
-              Change Password
-            </button>
-          </form>
+              ))}
+              {passMsg && (
+                <p className={`text-xs font-semibold ${passMsg.includes('!') ? 'text-green-600' : 'text-red-500'}`}>{passMsg}</p>
+              )}
+              <button type="submit" disabled={saving}
+                className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl text-sm hover:bg-gray-800 transition-colors disabled:opacity-60">
+                Change Password
+              </button>
+            </form>
+          )}
         </div>
 
         {/* Danger Zone */}
@@ -193,15 +211,21 @@ export function AccountSettingsPage() {
             <form onSubmit={handleDeleteAccount} className="space-y-4">
               <div>
                 <label className="text-xs font-semibold text-gray-700 block mb-1">
-                  Enter your password to confirm
+                  {isGoogleOnly ? (
+                    <>
+                      Type <span className="font-bold text-red-600 font-mono">DELETE</span> to confirm account deletion
+                    </>
+                  ) : (
+                    'Enter your password to confirm'
+                  )}
                 </label>
                 <input
-                  type="password"
+                  type={isGoogleOnly ? 'text' : 'password'}
                   value={deletePassword}
                   onChange={(e) => setDeletePassword(e.target.value)}
-                  placeholder="Your current password"
+                  placeholder={isGoogleOnly ? 'DELETE' : 'Your current password'}
                   required
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-gray-50"
+                  className={`w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-gray-50 ${isGoogleOnly ? 'font-mono font-bold uppercase tracking-wider' : ''}`}
                 />
               </div>
 

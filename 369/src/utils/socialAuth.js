@@ -30,9 +30,6 @@ export async function performGoogleLogin() {
 
   const response = await SocialLogin.login({
     provider: 'google',
-    options: {
-      scopes: ['email', 'profile'],
-    },
   });
 
   const idToken = response?.result?.idToken || response?.idToken;

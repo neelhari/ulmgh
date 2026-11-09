@@ -41,5 +41,15 @@ android/build
 android/app/build
 **/android/app/build
 *.apk
+*.aab
 release-apks/
+
+# Android signing keys, certificates & credentials
+*.jks
+*.keystore
+*.p12
+*.crt
+*.der
+release-signing.properties
+
 
