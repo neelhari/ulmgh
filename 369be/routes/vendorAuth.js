@@ -226,6 +226,9 @@ router.post('/login', authLimiter, async (req, res) => {
     if (result.rows.length === 0) return res.status(400).json({ error: 'Invalid credentials' });
 
     const vendor = result.rows[0];
+    if (vendor.is_deleted || vendor.status === 'inactive') {
+      return res.status(403).json({ error: 'This vendor account has been deleted or closed.' });
+    }
     const match = await bcrypt.compare(password, vendor.password_hash);
     if (!match) return res.status(400).json({ error: 'Invalid credentials' });
 
@@ -252,13 +255,16 @@ router.post('/forgot-password', authLimiter, async (req, res) => {
   if (!email) return res.status(400).json({ error: 'Email required' });
 
   try {
-    const vendor = await pool.query('SELECT name FROM vendors WHERE email=$1', [email]);
+    const vendor = await pool.query(
+      'SELECT name, email FROM vendors WHERE LOWER(email)=LOWER($1) AND COALESCE(is_deleted, false) = false',
+      [email.trim()]
+    );
     if (!vendor.rows.length) return res.status(404).json({ error: 'Vendor not found' });
 
     const otp = generateOTP();
-    await createOTP(email, otp);
+    await createOTP(vendor.rows[0].email, otp);
 
-    await sendVendorPasswordResetOTPEmail(email, otp, vendor.rows[0].name);
+    await sendVendorPasswordResetOTPEmail(vendor.rows[0].email, otp, vendor.rows[0].name);
     res.json({ message: 'OTP sent to your email' });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -341,4 +347,261 @@ router.get('/me', vendorAuthMiddleware, async (req, res) => {
   }
 });
 
-module.exports = { router, vendorAuthMiddleware };
+/**
+ * Shared helper to close and anonymize a vendor account while preserving
+ * statutory order, fulfillment, subscription, and payout records.
+ */
+async function closeAndAnonymizeVendorAccount(vendor) {
+  const balance = parseFloat(vendor.wallet_balance || 0);
+  if (balance > 0) {
+    return {
+      blocked: true,
+      error: `Cannot delete account with an active wallet balance of ₹${balance.toLocaleString()}. Please contact admin to withdraw your remaining balance first.`
+    };
+  }
+
+  const anonymizedEmail = `deleted_vendor_${vendor.id}_${Date.now()}@deleted.ulmgh.invalid`;
+  try {
+    await pool.query(
+      `UPDATE vendors
+       SET name = 'Deleted Vendor',
+           store_name = 'Closed Store',
+           email = $1,
+           phone = '',
+           address = '',
+           password_hash = '',
+           status = 'inactive',
+           is_deleted = TRUE,
+           deleted_at = NOW(),
+           pickup_contact_name = '',
+           pickup_phone = '',
+           pickup_line1 = '',
+           pickup_line2 = '',
+           bank_account_holder_name = NULL,
+           bank_account_number = NULL,
+           bank_ifsc_code = NULL,
+           bank_name = NULL,
+           bank_verification_status = 'not_provided'
+       WHERE id = $2`,
+      [anonymizedEmail, vendor.id]
+    );
+  } catch (updateErr) {
+    if (updateErr.code === '42703') {
+      await pool.query(
+        `UPDATE vendors
+         SET name = 'Deleted Vendor',
+             store_name = 'Closed Store',
+             email = $1,
+             phone = '',
+             address = '',
+             password_hash = '',
+             status = 'inactive'
+         WHERE id = $2`,
+        [anonymizedEmail, vendor.id]
+      );
+    } else {
+      throw updateErr;
+    }
+  }
+
+  // Deactivate vendor products & support agents (if support_agents table exists)
+  await pool.query(
+    "UPDATE products SET is_active = FALSE, status = 'archived' WHERE vendor_id = $1",
+    [vendor.id]
+  );
+  try {
+    await pool.query(
+      "UPDATE support_agents SET is_active = FALSE WHERE scope = 'vendor' AND vendor_id = $1",
+      [vendor.id]
+    );
+  } catch (agentErr) {
+    if (agentErr.code !== '42P01') throw agentErr;
+  }
+
+  // Clean up pending OTPs and push notification device tokens for this vendor
+  if (vendor.email) {
+    await pool.query('DELETE FROM otps WHERE LOWER(email) = LOWER($1)', [vendor.email]);
+  }
+  try {
+    await pool.query("DELETE FROM fcm_device_tokens WHERE user_type = 'vendor' AND user_id = $1", [vendor.id]);
+  } catch (tokenErr) {
+    if (tokenErr.code !== '42P01') console.warn('FCM cleanup warning:', tokenErr.message);
+  }
+
+  return { blocked: false };
+}
+
+// POST /api/vendorAuth/deletion-request/send-code (Public)
+router.post('/deletion-request/send-code', authLimiter, async (req, res) => {
+  const { email } = req.body;
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email address is required' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const vendorRes = await pool.query(
+      `SELECT id, name, store_name, email FROM vendors
+       WHERE LOWER(email) = $1 AND COALESCE(is_deleted, false) = false`,
+      [cleanEmail]
+    );
+
+    if (vendorRes.rows.length) {
+      const vendor = vendorRes.rows[0];
+      const otp = generateOTP();
+      await createOTP(vendor.email, otp);
+
+      try {
+        await transporter.sendMail({
+          from: `"ULMGH-369 Vendor Support" <${process.env.EMAIL_USER}>`,
+          to: vendor.email,
+          subject: 'ULMGH-369 Vendor Account Deletion Verification Code',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #eee; border-radius: 12px; background: #fff;">
+              <h2 style="color: #022A21; margin-top: 0;">Vendor Account Deletion Request</h2>
+              <p style="color: #555; line-height: 1.6;">
+                We received a request to close and delete the vendor account for <strong>${vendor.store_name || vendor.name}</strong> on <strong>ULMGH-369</strong>.
+              </p>
+              <p style="color: #555; line-height: 1.6;">Your 6-digit email ownership verification code is:</p>
+              <div style="text-align: center; margin: 24px 0;">
+                <span style="display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #fe6603; background: #fff5ee; padding: 12px 28px; border-radius: 8px; border: 1px dashed #fe6603;">
+                  ${otp}
+                </span>
+              </div>
+              <p style="color: #777; font-size: 13px; line-height: 1.5;">
+                This verification code is valid for 10 minutes. If you did not request this, no action is required and your vendor account remains active.
+              </p>
+            </div>
+          `
+        });
+      } catch (mailErr) {
+        console.error('Failed to send vendor deletion OTP email:', mailErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'If an active vendor account exists with this email, a 6-digit verification code has been sent.'
+    });
+  } catch (err) {
+    console.error('Vendor deletion send-code error:', err);
+    res.status(500).json({ error: 'Server error processing vendor deletion request' });
+  }
+});
+
+// POST /api/vendorAuth/deletion-request/confirm (Public)
+router.post('/deletion-request/confirm', authLimiter, async (req, res) => {
+  const { email, otp, phone, reason } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({ error: 'Email and verification code are required' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanOtp = otp.toString().trim();
+
+  try {
+    const otpResult = await verifyOTP(cleanEmail, cleanOtp, true);
+    if (!otpResult.valid) {
+      return res.status(400).json({ error: otpResult.error || 'Invalid or expired verification code' });
+    }
+
+    const vendorRes = await pool.query(
+      `SELECT * FROM vendors
+       WHERE LOWER(email) = $1 AND COALESCE(is_deleted, false) = false`,
+      [cleanEmail]
+    );
+
+    const vendor = vendorRes.rows[0] || null;
+    const vendorId = vendor?.id || null;
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || null;
+
+    let reqStatus = 'completed';
+    let processedAt = new Date();
+    let blockedMsg = null;
+
+    if (vendor) {
+      const outcome = await closeAndAnonymizeVendorAccount(vendor);
+      if (outcome.blocked) {
+        reqStatus = 'pending';
+        processedAt = null;
+        blockedMsg = outcome.error;
+      }
+    } else {
+      reqStatus = 'pending';
+      processedAt = null;
+    }
+
+    await pool.query(
+      `INSERT INTO vendor_deletion_requests
+       (vendor_id, email, phone, reason, verification_status, verified_at, status, processed_at, ip_address)
+       VALUES ($1, $2, $3, $4, 'verified', NOW(), $5, $6, $7)`,
+      [vendorId, cleanEmail, phone ? String(phone).trim() : null, reason ? String(reason).trim() : null, reqStatus, processedAt, ip]
+    );
+
+    // Notify admin
+    try {
+      await transporter.sendMail({
+        from: `"ULMGH-369 Alerts" <${process.env.EMAIL_USER}>`,
+        to: process.env.EMAIL_USER,
+        subject: `⚠️ Verified Vendor Account Deletion Request - ${cleanEmail}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+            <h3 style="color: #c00;">Verified Vendor Account Deletion Request</h3>
+            <p><strong>Email:</strong> ${cleanEmail}</p>
+            <p><strong>Vendor ID:</strong> ${vendorId || 'N/A'}</p>
+            <p><strong>Store Name:</strong> ${vendor?.store_name || 'N/A'}</p>
+            <p><strong>Phone:</strong> ${phone || 'N/A'}</p>
+            <p><strong>Reason / Comments:</strong> ${reason || 'None provided'}</p>
+            <p><strong>Status:</strong> ${reqStatus}${blockedMsg ? ` (${blockedMsg})` : ''}</p>
+            <p><strong>Verification:</strong> Email ownership verified via OTP</p>
+            <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+            <p><strong>IP:</strong> ${ip || 'N/A'}</p>
+          </div>
+        `
+      });
+    } catch (e) {
+      console.error('Failed to notify admin of vendor deletion request:', e);
+    }
+
+    if (blockedMsg) {
+      return res.status(400).json({ error: blockedMsg, blockedByBalance: true });
+    }
+
+    // Acknowledge to vendor
+    try {
+      await transporter.sendMail({
+        from: `"ULMGH-369 Vendor Support" <${process.env.EMAIL_USER}>`,
+        to: cleanEmail,
+        subject: 'ULMGH-369 Vendor Account Deletion Confirmed',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #eee; border-radius: 12px; background: #fff;">
+            <h2 style="color: #022A21; margin-top: 0;">Vendor Deletion Request Confirmed</h2>
+            <p style="color: #555; line-height: 1.6;">
+              We have received and verified your request to close and delete the vendor account for <strong>${cleanEmail}</strong>.
+            </p>
+            <p style="color: #555; line-height: 1.6;">
+              Your vendor profile details, login credentials, pickup address, bank payout details, product listings, and vendor support access have been removed/deactivated. Completed order, fulfillment, payout, and subscription records are retained strictly for statutory accounting and tax compliance.
+            </p>
+            <p style="color: #777; font-size: 13px; line-height: 1.5;">
+              If you have any questions, contact our vendor support desk at ulmgh369@gmail.com.
+            </p>
+          </div>
+        `
+      });
+    } catch (e) {
+      console.error('Failed to send confirmation email to vendor:', e);
+    }
+
+    res.json({
+      success: true,
+      message: 'Your email ownership has been verified and your vendor account deletion request has been processed.'
+    });
+  } catch (err) {
+    console.error('Vendor deletion confirm error:', err);
+    res.status(500).json({ error: 'Server error confirming vendor deletion request' });
+  }
+});
+
+module.exports = { router, vendorAuthMiddleware, closeAndAnonymizeVendorAccount };

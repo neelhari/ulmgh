@@ -86,6 +86,7 @@ import { VendorProfilePage } from './pages/vendor/VendorProfilePage';
 import { VendorSupportPage } from './pages/vendor/VendorSupportPage';
 import { VendorOffersPage } from './pages/vendor/VendorOffersPage';
 import { VendorProductFormPage } from './pages/vendor/VendorProductFormPage';
+import { VendorDeleteAccountPage } from './pages/vendor/VendorDeleteAccountPage';
 
 const isVendorApp = import.meta.env.VITE_APP_TARGET === 'vendor';
 
@@ -199,7 +200,7 @@ function App() {
       StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
       StatusBar.setBackgroundColor({ color: '#ff8500' }).catch(() => {});
       StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
-      initializeSocialLogin().catch(() => {});
+      if (!isVendorApp) initializeSocialLogin().catch(() => {});
       initPushNotifications(isVendorApp ? 'vendor' : 'customer').catch(() => {});
     }
   }, [fetchData]);
@@ -215,6 +216,7 @@ function App() {
               <Route path="/vendor-login" element={<VendorLoginPage />} />
               <Route path="/vendor-signup" element={<VendorSignupPage />} />
               <Route path="/vendor-guidelines" element={<VendorGuidelinesPage />} />
+              <Route path="/vendor-delete-account" element={<VendorDeleteAccountPage />} />
               <Route path="/vendor/*" element={
                 <VendorLayout>
                   <Routes>
@@ -257,6 +259,7 @@ function App() {
               <>
                 <Route path="/vendor-login" element={<VendorLoginPage />} />
                 <Route path="/vendor-signup" element={<VendorSignupPage />} />
+                <Route path="/vendor-delete-account" element={<VendorDeleteAccountPage />} />
                 <Route path="/support-login" element={<SupportLoginPage />} />
 
                 {/* Admin — using AdminLayout */}

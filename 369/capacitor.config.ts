@@ -20,6 +20,16 @@ const config: CapacitorConfig = isVendor
       android: {
         path: 'android-vendor',
       },
+      plugins: {
+        SocialLogin: {
+          providers: {
+            google: false,
+            facebook: false,
+            apple: false,
+            twitter: false,
+          },
+        },
+      },
     }
   : {
       appId: 'com.ulmgh.store',
@@ -40,6 +50,16 @@ const config: CapacitorConfig = isVendor
           },
       android: {
         path: 'android',
+      },
+      plugins: {
+        SocialLogin: {
+          providers: {
+            google: true,
+            facebook: false,
+            apple: false,
+            twitter: false,
+          },
+        },
       },
     };
 

@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const pool = require('../db');
-const { vendorAuthMiddleware } = require('./vendorAuth');
+const { vendorAuthMiddleware, closeAndAnonymizeVendorAccount } = require('./vendorAuth');
 const fulfillmentService = require('../services/fulfillmentService');
 const {
   validatePickupAddress,
@@ -822,61 +822,11 @@ router.delete('/account', async (req, res) => {
       return res.status(400).json({ error: 'Incorrect password' });
     }
 
-    // 2. Refuse if wallet balance is above 0
-    const balance = parseFloat(vendor.wallet_balance || 0);
-    if (balance > 0) {
-      return res.status(400).json({
-        error: `Cannot delete account with an active wallet balance of ₹${balance.toLocaleString()}. Please contact admin to withdraw your remaining balance first.`
-      });
+    // 2. Check wallet balance & anonymize vendor account via shared helper
+    const outcome = await closeAndAnonymizeVendorAccount(vendor);
+    if (outcome.blocked) {
+      return res.status(400).json({ error: outcome.error });
     }
-
-    // 3. Anonymize vendor record
-    const anonymizedEmail = `deleted_vendor_${vendor.id}_${Date.now()}@deleted.ulmgh.invalid`;
-    try {
-      await pool.query(
-        `UPDATE vendors
-         SET name = 'Deleted Vendor',
-             store_name = 'Closed Store',
-             email = $1,
-             phone = '',
-             address = '',
-             password_hash = '',
-             status = 'inactive',
-             is_deleted = TRUE,
-             deleted_at = NOW()
-         WHERE id = $2`,
-        [anonymizedEmail, req.vendorId]
-      );
-    } catch (updateErr) {
-      if (updateErr.code === '42703') { // is_deleted / deleted_at columns not created yet before migration
-        await pool.query(
-          `UPDATE vendors
-           SET name = 'Deleted Vendor',
-               store_name = 'Closed Store',
-               email = $1,
-               phone = '',
-               address = '',
-               password_hash = '',
-               status = 'inactive'
-           WHERE id = $2`,
-          [anonymizedEmail, req.vendorId]
-        );
-      } else {
-        throw updateErr;
-      }
-    }
-
-    // 4. Deactivate vendor products
-    await pool.query(
-      "UPDATE products SET is_active = FALSE, status = 'archived' WHERE vendor_id = $1",
-      [req.vendorId]
-    );
-
-    // 5. Deactivate support agents
-    await pool.query(
-      "UPDATE support_agents SET is_active = FALSE WHERE scope = 'vendor' AND vendor_id = $1",
-      [req.vendorId]
-    );
 
     // Orders and transaction history remain intact for accounting
     res.json({ success: true, message: 'Vendor account successfully deleted and closed' });

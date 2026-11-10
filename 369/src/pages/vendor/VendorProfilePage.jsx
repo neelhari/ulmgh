@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { User, Store, Mail, Phone, MapPin, CreditCard, CheckCircle2, AlertTriangle, RefreshCw, Edit3, Building2, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { User, Store, Mail, Phone, MapPin, CreditCard, CheckCircle2, AlertTriangle, RefreshCw, Edit3, Building2, X, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { unregisterCurrentDeviceToken } from '../../utils/pushNotifications';
 
 const INDIAN_STATES = [
   'Andaman and Nicobar Islands',
@@ -50,6 +52,7 @@ function daysLeft(dateStr) {
 }
 
 export function VendorProfilePage() {
+  const navigate = useNavigate();
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState([]);
@@ -58,6 +61,10 @@ export function VendorProfilePage() {
   const [showPlans, setShowPlans] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const [editForm, setEditForm] = useState({
     store_name: '',
     pickup_contact_name: '',
@@ -201,6 +208,37 @@ export function VendorProfilePage() {
       toast.error(err.message);
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteAccount = async (e) => {
+    e.preventDefault();
+    if (!deletePassword) {
+      setDeleteError('Password is required to confirm account deletion');
+      return;
+    }
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const res = await fetch(`${BACKEND_URL}/vendor/account`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ password: deletePassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to delete vendor account');
+
+      await unregisterCurrentDeviceToken('vendor').catch(() => {});
+      localStorage.removeItem('vendor_token');
+      setShowDeleteModal(false);
+      toast.success('Vendor account deleted and closed');
+      navigate('/vendor-login');
+    } catch (err) {
+      setDeleteError(err.message || 'Failed to delete vendor account');
+      setDeleting(false);
     }
   };
 
@@ -467,6 +505,27 @@ export function VendorProfilePage() {
         </div>
       </div>
 
+      {/* Danger Zone: Close & Delete Vendor Account */}
+      <div className="bg-white rounded-2xl sm:rounded-3xl border border-red-200 p-4 sm:p-6 shadow-sm space-y-3">
+        <div className="flex items-start justify-between gap-4 flex-col sm:flex-row sm:items-center">
+          <div>
+            <h2 className="text-sm sm:text-base font-bold text-red-700 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" /> Danger Zone
+            </h2>
+            <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+              Permanently close your store, deactivate all listings, and anonymize your vendor profile and payout details. Historical orders and settlement records are retained for accounting compliance.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setShowDeleteModal(true); setDeletePassword(''); setDeleteError(''); }}
+            className="flex-shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-bold text-xs sm:text-sm transition-colors"
+          >
+            <Trash2 className="w-4 h-4" /> Delete Vendor Account
+          </button>
+        </div>
+      </div>
+
       {/* Edit Pickup Location Modal */}
       {showEditModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -600,6 +659,72 @@ export function VendorProfilePage() {
                   className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-[#fe6603] hover:bg-[#e55c02] transition-colors disabled:opacity-50"
                 >
                   {savingEdit ? 'Saving...' : 'Save Pickup Location'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Vendor Account Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 relative">
+            <button
+              type="button"
+              onClick={() => { setShowDeleteModal(false); setDeletePassword(''); setDeleteError(''); }}
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 text-red-600 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Delete Vendor Account</h3>
+            </div>
+
+            <p className="text-sm text-gray-600 leading-relaxed mb-4">
+              This action is permanent and cannot be undone. Your store will be closed, all products archived, and your profile, pickup contact, and bank details wiped. Note: accounts with an active wallet balance above ₹0 must be settled before closure.
+            </p>
+
+            <form onSubmit={handleDeleteAccount} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-700 block mb-1">
+                  Enter your vendor password to confirm
+                </label>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="Your current password"
+                  required
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-gray-50"
+                />
+              </div>
+
+              {deleteError && (
+                <p className="text-xs font-semibold text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-100">
+                  {deleteError}
+                </p>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowDeleteModal(false); setDeletePassword(''); setDeleteError(''); }}
+                  disabled={deleting}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deleting || !deletePassword}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {deleting ? 'Deleting...' : 'Delete Account'}
                 </button>
               </div>
             </form>
