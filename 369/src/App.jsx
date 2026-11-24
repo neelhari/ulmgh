@@ -115,7 +115,18 @@ function AppBackButtonHandler() {
     if (!Capacitor.isNativePlatform()) return;
 
     let backListener;
+    let urlListener;
     const addListener = async () => {
+      urlListener = await CapApp.addListener('appUrlOpen', (data) => {
+        try {
+          const urlStr = data?.url || '';
+          const match = urlStr.match(/:\/\/(?:www\.)?(?:[^\/]+)?(\/.*)?$/);
+          const path = match ? match[1] || '/' : '/';
+          if (path) navigate(path);
+        } catch (e) {
+          console.warn('URL open handling error:', e);
+        }
+      });
       backListener = await CapApp.addListener('backButton', () => {
         if (isVendorApp) {
           if (location.pathname === '/vendor' || location.pathname === '/vendor-login' || location.pathname === '/') {
@@ -137,6 +148,9 @@ function AppBackButtonHandler() {
     return () => {
       if (backListener?.remove) {
         backListener.remove();
+      }
+      if (urlListener?.remove) {
+        urlListener.remove();
       }
     };
   }, [location.pathname, navigate]);
@@ -198,7 +212,9 @@ function App() {
     fetchData();
     if (Capacitor.isNativePlatform()) {
       StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
-      StatusBar.setBackgroundColor({ color: '#ff8500' }).catch(() => {});
+      if (Capacitor.getPlatform() === 'android') {
+        StatusBar.setBackgroundColor({ color: '#ff8500' }).catch(() => {});
+      }
       StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
       if (!isVendorApp) initializeSocialLogin().catch(() => {});
       initPushNotifications(isVendorApp ? 'vendor' : 'customer').catch(() => {});

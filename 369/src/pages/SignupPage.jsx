@@ -17,9 +17,17 @@ function GoogleIcon() {
   );
 }
 
+function AppleIcon() {
+  return (
+    <svg viewBox="0 0 170 170" className="w-5 h-5 fill-current">
+      <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.74 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.7-3.04-7.69-7.85-11.97-14.43-6.2-9.58-11.02-20.73-14.46-33.45-3.44-12.72-5.16-24.58-5.16-35.58 0-15.34 3.7-28.06 11.1-38.15 7.4-10.09 16.94-15.22 28.63-15.4 4.02 0 8.84 1.15 14.46 3.45 5.62 2.3 9.4 3.52 11.34 3.67 1.45 0 5.46-1.34 12.03-4.02 6.57-2.68 12.16-3.86 16.77-3.54 12.87.64 23.36 5.43 31.47 14.37-11.24 6.83-16.7 16.27-16.37 28.32.32 9.53 4.14 17.5 11.46 23.91 4.5 3.94 9.69 6.78 15.58 8.52-2.3 6.94-5.18 14.18-8.64 21.72zM119.22 31.84c0-7.39 2.65-14.14 7.95-20.25 5.3-6.11 11.83-9.98 19.59-11.59.1 1.06.16 1.95.16 2.67 0 7.39-2.73 14.28-8.19 20.67-5.46 6.39-12.18 10.15-20.16 11.28-.21-.93-.35-1.85-.35-2.78z"/>
+    </svg>
+  );
+}
+
 export function SignupPage() {
   const navigate = useNavigate();
-  const { signup, verifyOtp, loginWithGoogle, loading, error } = useAuthStore();
+  const { signup, verifyOtp, loginWithGoogle, loginWithApple, loading, error } = useAuthStore();
 
   const [step, setStep] = useState('form');
   const [showPass, setShowPass] = useState(false);
@@ -41,7 +49,14 @@ export function SignupPage() {
     setLocalError('');
     const res = await loginWithGoogle();
     if (res.success) navigate(res.role === 'admin' ? '/admin' : '/');
-    else if (res.error) setLocalError(res.error);
+    else if (!res.cancelled && res.error) setLocalError(res.error);
+  };
+
+  const handleAppleLogin = async () => {
+    setLocalError('');
+    const res = await loginWithApple();
+    if (res.success) navigate(res.role === 'admin' ? '/admin' : '/');
+    else if (!res.cancelled && res.error) setLocalError(res.error);
   };
 
   const handleOtpChange = (val, idx) => {
@@ -176,6 +191,17 @@ export function SignupPage() {
                     <span className="text-[11px] text-gray-400 font-medium px-1">or continue with</span>
                     <div className="flex-1 h-px bg-gray-100" />
                   </div>
+                  {Capacitor.getPlatform() === 'ios' && (
+                    <button
+                      type="button"
+                      onClick={handleAppleLogin}
+                      disabled={loading}
+                      className="w-full flex items-center justify-center gap-3 bg-black hover:bg-gray-900 text-white font-semibold py-3.5 rounded-2xl text-[15px] transition-all shadow-sm hover:shadow-md active:scale-[0.98] mb-3 disabled:opacity-60"
+                    >
+                      <AppleIcon />
+                      Continue with Apple
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleGoogleLogin}

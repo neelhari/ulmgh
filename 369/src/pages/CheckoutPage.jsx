@@ -361,7 +361,7 @@ export function CheckoutPage() {
         key: orderData.key,
         amount: orderData.order.amount,
         currency: orderData.order.currency,
-        name: 'Tradition Store',
+        name: 'ULMGH369',
         description: paymentMethod === 'cod'
           ? `COD Advance Payment (₹${COD_ADVANCE})`
           : 'Order Payment',
@@ -375,20 +375,35 @@ export function CheckoutPage() {
       };
 
       // --- PLATFORM BRANCHING ---
+      let handledViaNative = false;
+
       if (Capacitor.isNativePlatform()) {
-        // --- NATIVE ANDROID APK FLOW (Official Razorpay Android Standard SDK) ---
         try {
-          const response = await RazorpayNative.open(options);
-          await verifyAndConfirmOrder(response);
+          if (Capacitor.getPlatform() === 'ios') {
+            // --- NATIVE IOS FLOW (Official Razorpay iOS Standard SDK via capacitor-razorpay) ---
+            const CheckoutPlugin = registerPlugin('Checkout');
+            const res = await CheckoutPlugin.open(options);
+            const rzpResponse = res?.response || res;
+            await verifyAndConfirmOrder(rzpResponse);
+            handledViaNative = true;
+          } else if (Capacitor.getPlatform() === 'android') {
+            // --- NATIVE ANDROID APK FLOW (Official Razorpay Android Standard SDK) ---
+            const response = await RazorpayNative.open(options);
+            await verifyAndConfirmOrder(response);
+            handledViaNative = true;
+          }
         } catch (nativeErr) {
           console.warn('Native Razorpay error/cancellation:', nativeErr);
           const msg = nativeErr?.message || nativeErr?.description || 'Payment was cancelled or could not be completed.';
           alert(`Payment: ${msg}`);
           setIsPlacingOrder(false);
           setOrderConfirmed(false);
+          return;
         }
-      } else {
-        // --- WEB BROWSER FLOW (Existing checkout.js, 100% preserved) ---
+      }
+
+      if (!handledViaNative) {
+        // --- WEB BROWSER / IOS FLOW (Existing checkout.js, 100% preserved) ---
         const res = await loadRazorpay();
         if (!res) {
           alert('Razorpay SDK failed to load. Are you online?');

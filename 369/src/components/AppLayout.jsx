@@ -16,12 +16,12 @@ export function AppLayout({ children }) {
   const hideBottomNav = pathname.startsWith('/product/') || pathname.startsWith('/cart') || pathname.startsWith('/checkout');
 
   return (
-    <div className="min-h-screen bg-transparent flex justify-center w-full">
-      <div className="w-full md:max-w-full max-w-5xl mx-auto bg-transparent relative min-h-screen flex flex-col overflow-x-hidden">
+    <div className="min-h-screen bg-[#f8f9fa] flex justify-center w-full">
+      <div className="w-full md:max-w-full max-w-5xl mx-auto bg-[#f8f9fa] relative min-h-screen flex flex-col overflow-x-hidden">
         <Toast />
         
         {/* Main Content Area */}
-        <main className={`flex-grow flex flex-col ${hideBottomNav ? 'pb-0' : 'pb-28 md:pb-0'}`}>
+        <main className={`flex-grow flex flex-col ${hideBottomNav ? 'pb-4' : 'pb-24'}`}>
           {children}
         </main>
         

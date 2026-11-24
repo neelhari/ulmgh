@@ -281,7 +281,7 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [localSearch, setLocalSearch] = useState('');
-  const [locationName, setLocationName] = useState('Allow location access');
+  const [locationName, setLocationName] = useState('Select Delivery Location');
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
   const [estimatedTime, setEstimatedTime] = useState('8 min');
   const [isScrolled, setIsScrolled] = useState(false);
@@ -342,8 +342,8 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
         }
       },
       (error) => {
-        console.error("Geolocation error:", error);
-        alert("Unable to retrieve location. Please check settings.");
+        console.warn("Geolocation permission or retrieval error:", error);
+        setLocationName('Select Delivery Location');
         setIsFetchingLocation(false);
       }
     );
@@ -533,9 +533,12 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
           )}
         </AnimatePresence>
 
-        <div className={effectiveHideSearch ? "h-[105px]" : "h-[220px]"} />
-        <header className={`fixed top-0 left-0 z-50 w-full transition-all duration-300 pb-3 ${effectiveHideSearch ? 'bg-transparent' : (isScrolled ? 'bg-white/95 backdrop-blur-md shadow-md border-b border-gray-100' : 'bg-white shadow-sm border-b border-gray-100')}`}>
-          <div className={`absolute top-0 left-0 w-full overflow-hidden pointer-events-none z-0 transition-all duration-300 ${isScrolled ? 'h-[75px] opacity-90' : 'h-[170px] opacity-100'}`}>
+        <div style={{ height: effectiveHideSearch ? 'calc(90px + env(safe-area-inset-top, 0px))' : 'calc(210px + env(safe-area-inset-top, 0px))' }} />
+        <header
+          className={`fixed top-0 left-0 z-50 w-full pb-3 ${effectiveHideSearch ? 'bg-transparent' : 'bg-white shadow-sm border-b border-gray-100'}`}
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
+          <div className="absolute top-0 left-0 w-full overflow-hidden pointer-events-none z-0 h-[170px] opacity-100">
             <svg viewBox="0 0 375 170" className="w-full h-full" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -557,9 +560,9 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
             </svg>
           </div>
 
-          <div className="w-full max-w-lg mx-auto px-4 pt-safe pt-2 relative z-10">
+          <div className="w-full max-w-lg mx-auto px-4 pt-2 relative z-10">
             {/* Top Row: Logo & Icons */}
-            <div className={`flex items-start justify-between transition-all duration-300 ${isScrolled ? 'mb-1.5' : (effectiveHideSearch ? 'mb-0' : 'mb-3')}`}>
+            <div className={`flex items-start justify-between ${effectiveHideSearch ? 'mb-0' : 'mb-3'}`}>
               <div className="flex items-center">
                 {title ? (
                   <div className="flex items-center gap-3">
@@ -569,16 +572,12 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
                     <h1 className="text-gray-900 font-bold text-[17px] tracking-wide bg-white/80 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm">{title}</h1>
                   </div>
                 ) : (
-                  <Link to="/" className="flex items-center transition-all duration-300 group">
-                    <div className={`bg-white/95 backdrop-blur-xs rounded-2xl p-1 shadow-md border border-white/90 transition-all duration-300 flex items-center justify-center overflow-hidden ${
-                      isScrolled ? 'h-10 px-1.5' : 'h-14 px-1.5'
-                    }`}>
+                  <Link to="/" className="flex items-center group">
+                    <div className="bg-white/95 rounded-2xl p-1 shadow-md border border-white/90 flex items-center justify-center overflow-hidden h-14 px-1.5">
                       <img
                         src={logo}
                         alt="ULMGH-369"
-                        className={`w-auto object-contain rounded-xl transition-all duration-300 ${
-                          isScrolled ? 'h-[34px]' : 'h-[50px]'
-                        }`}
+                        className="w-auto object-contain rounded-xl h-[50px]"
                       />
                     </div>
                   </Link>
@@ -608,9 +607,9 @@ export function Header({ variant = 'default', title, showShare = false, hideSear
               </div>
             </div>
 
-            {/* Location & Time Bar (Scroll-to-Collapse) */}
+            {/* Location & Time Bar (Fixed Position) */}
             {!effectiveHideSearch && (
-              <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isScrolled ? 'max-h-0 opacity-0 mb-0 -translate-y-2 pointer-events-none' : 'max-h-20 opacity-100 mb-3 translate-y-0'}`}>
+              <div className="mb-3">
                 <div className="flex items-center gap-3">
                   <button
                     onClick={handleLocationClick}

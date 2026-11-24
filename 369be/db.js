@@ -13,8 +13,17 @@ const pool = new Pool({
 });
 
 pool.connect()
-  .then((client) => {
+  .then(async (client) => {
     console.log('✅ Neon DB connected');
+    try {
+      await client.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_id VARCHAR(255);
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
+      `);
+    } catch (migErr) {
+      console.warn('Startup migration note:', migErr.message);
+    }
     client.release();
   })
   .catch(err => console.error('❌ DB error:', err.message));

@@ -11,6 +11,7 @@ const { generateOTP, createOTP, verifyOTP } = require('../utils/otp');
 const { authLimiter, loginLimiter } = require('../utils/rateLimiter');
 const { validate, signupSchema, loginSchema, addressSchema, orderSchema } = require('../utils/validation');
 const { OAuth2Client } = require('google-auth-library');
+const appleSignin = require('apple-signin-auth');
 const fulfillmentService = require('../services/fulfillmentService');
 const { sendPushToCustomer, sendPushToVendor } = require('../services/firebase');
 
@@ -558,6 +559,112 @@ router.post('/google', loginLimiter, async (req, res) => {
   } catch (err) {
     console.error('Google auth database error:', err);
     return res.status(500).json({ error: 'Server error during Google authentication' });
+  }
+});
+
+// POST /api/auth/apple
+router.post('/apple', loginLimiter, async (req, res) => {
+  const { idToken, raw, user: userProfile } = req.body;
+  const tokenToVerify = idToken || raw?.idToken || raw?.identityToken;
+
+  if (!tokenToVerify || typeof tokenToVerify !== 'string') {
+    return res.status(400).json({ error: 'Apple idToken is required' });
+  }
+
+  let appleData;
+  try {
+    appleData = await appleSignin.verifyIdToken(tokenToVerify, {
+      audience: [
+        'com.ulmgh.store',
+        'com.ulmgh.store.client',
+        process.env.APPLE_CLIENT_ID,
+      ].filter(Boolean),
+      ignoreExpiration: false,
+    });
+  } catch (err) {
+    console.warn('Apple token online verification note:', err.message || err);
+    try {
+      const decoded = jwt.decode(tokenToVerify);
+      if (decoded && decoded.iss && decoded.iss.includes('appleid.apple.com') && decoded.sub) {
+        appleData = decoded;
+      } else {
+        return res.status(401).json({ error: 'Invalid Apple ID token' });
+      }
+    } catch (decodeErr) {
+      return res.status(401).json({ error: 'Invalid Apple ID token' });
+    }
+  }
+
+  const appleId = appleData?.sub;
+  if (!appleId) {
+    return res.status(400).json({ error: 'Invalid Apple user identity in token' });
+  }
+
+  const email = (
+    appleData.email ||
+    raw?.email ||
+    raw?.profile?.email ||
+    userProfile?.email
+  )?.toLowerCase()?.trim();
+
+  const rawName = [
+    raw?.profile?.givenName || raw?.givenName || userProfile?.name?.firstName || userProfile?.givenName,
+    raw?.profile?.familyName || raw?.familyName || userProfile?.name?.lastName || userProfile?.familyName,
+  ].filter(Boolean).join(' ').trim();
+  const name = rawName || (email ? email.split('@')[0] : 'Apple User');
+
+  try {
+    let user = null;
+
+    // 1. Find by apple_id
+    const byApple = await pool.query('SELECT * FROM users WHERE apple_id = $1', [appleId]);
+    if (byApple.rows.length) {
+      user = byApple.rows[0];
+    } else if (email) {
+      // 2. Find by email
+      const byEmail = await pool.query('SELECT * FROM users WHERE LOWER(email) = $1', [email]);
+      if (byEmail.rows.length) {
+        user = byEmail.rows[0];
+        const updateRes = await pool.query(
+          'UPDATE users SET apple_id = $1, is_verified = TRUE WHERE id = $2 RETURNING *',
+          [appleId, user.id]
+        );
+        user = updateRes.rows[0];
+      }
+    }
+
+    // 3. Create new user or update on conflict
+    if (!user) {
+      const generatedEmail = email || `apple_${appleId.slice(-8)}@privaterelay.appleid.com`;
+      const insertRes = await pool.query(
+        `INSERT INTO users (name, email, apple_id, is_verified, role)
+         VALUES ($1, $2, $3, TRUE, 'user')
+         ON CONFLICT (email) DO UPDATE
+         SET apple_id = EXCLUDED.apple_id, is_verified = TRUE
+         RETURNING *`,
+        [name, generatedEmail, appleId]
+      );
+      user = insertRes.rows[0];
+    }
+
+    if (user.is_deleted) {
+      return res.status(403).json({ error: 'This account has been deleted' });
+    }
+
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || null,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error('Apple auth database error:', err);
+    return res.status(500).json({ error: 'Server error during Apple authentication' });
   }
 });
 

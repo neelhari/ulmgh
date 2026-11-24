@@ -70,9 +70,16 @@
   }
 }
 
-body {
+html, body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
   font-family: 'Poppins', sans-serif;
   background-color: var(--color-brand-light-bg);
   color: var(--color-brand-text);
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
 }
 

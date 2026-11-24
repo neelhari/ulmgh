@@ -90,14 +90,15 @@ export function BottomNav() {
       `}</style>
 
       <div
-        className="md:hidden fixed bottom-0 left-0 right-0 w-full z-50 pb-safe"
+        className="fixed bottom-0 left-0 right-0 w-full z-50 bg-white"
         style={{
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, #ffffff 100%)',
-          borderTop: '1px solid rgba(0,71,255,0.10)',
-          boxShadow: '0 -6px 32px rgba(0,71,255,0.10), 0 -1px 0 rgba(0,71,255,0.06)',
+          backgroundColor: '#ffffff',
+          borderTop: '1px solid #e5e7eb',
+          boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.08)',
+          paddingBottom: 'max(14px, env(safe-area-inset-bottom, 14px))',
         }}
       >
-        <div className="flex justify-around items-center h-[68px] px-1">
+        <div className="flex justify-around items-center h-[60px] px-1 bg-white max-w-2xl mx-auto">
           {tabs.map((tab) => (
             <NavLink
               key={tab.name}

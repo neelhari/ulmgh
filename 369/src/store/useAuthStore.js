@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import api from '../utils/api';
-import { performGoogleLogin } from '../utils/socialAuth';
+import { performGoogleLogin, performAppleLogin } from '../utils/socialAuth';
 import { syncDeviceToken, unregisterCurrentDeviceToken } from '../utils/pushNotifications';
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL?.replace('/api', '') || 'http://localhost:5000';
@@ -13,6 +13,7 @@ export const useAuthStore = create((set, get) => ({
   orders: [],
   loading: false,
   error: null,
+  clearError: () => set({ error: null }),
 
   signup: async (name, email, phone, password) => {
     set({ loading: true, error: null });
@@ -165,6 +166,39 @@ export const useAuthStore = create((set, get) => ({
       if (/cancel|dismiss|abort|closed|user_cancel|cancelled|canceled|16/i.test(rawMsg)) {
         error = 'Google login was cancelled.';
       } else if (/network|offline|connect|internet|timeout|unavailable|econnrefused/i.test(rawMsg)) {
+        error = 'Network error. Please check your internet connection.';
+      } else if (err.response?.data?.error) {
+        error = err.response.data.error;
+      } else if (rawMsg && rawMsg !== '[object Object]') {
+        error = rawMsg;
+      }
+
+      set({ error });
+      return { success: false, error };
+    }
+  },
+
+  // Native Apple Login (Capacitor)
+  loginWithApple: async () => {
+    set({ loading: true, error: null });
+    try {
+      const appleResult = await performAppleLogin();
+      const { data } = await api.post('/auth/apple', appleResult);
+      localStorage.setItem('token', data.token);
+      set({ token: data.token, user: data.user, loading: false });
+      syncDeviceToken('customer');
+      return { success: true, role: data.user.role };
+    } catch (err) {
+      set({ loading: false });
+      const rawMsg = err?.message || err?.error || (typeof err === 'string' ? err : '');
+
+      if (/cancel|dismiss|abort|closed|user_cancel|cancelled|canceled|1001/i.test(rawMsg)) {
+        set({ error: null });
+        return { success: false, cancelled: true };
+      }
+
+      let error = 'Apple login failed. Please try again.';
+      if (/network|offline|connect|internet|timeout|unavailable|econnrefused/i.test(rawMsg)) {
         error = 'Network error. Please check your internet connection.';
       } else if (err.response?.data?.error) {
         error = err.response.data.error;

@@ -42,6 +42,7 @@ const config: CapacitorConfig = isVendor
           }
         : {
             androidScheme: 'https',
+            iosScheme: 'https',
             allowNavigation: [
               '*.razorpay.com',
               'api.razorpay.com',
@@ -51,12 +52,15 @@ const config: CapacitorConfig = isVendor
       android: {
         path: 'android',
       },
+      ios: {
+        path: 'ios',
+      },
       plugins: {
         SocialLogin: {
           providers: {
             google: true,
             facebook: false,
-            apple: false,
+            apple: true,
             twitter: false,
           },
         },
