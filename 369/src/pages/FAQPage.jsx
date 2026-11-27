@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, MessageCircle, PlayCircle, ShieldCheck, Truck, RotateCcw, Lock } from 'lucide-react';
 import { Header } from '../components/Header';
+import { SEO } from '../components/SEO';
 import { Footer } from '../components/Footer';
 import { Link } from 'react-router-dom';
 import { openExternalLink } from '../utils/externalLink';
@@ -26,6 +27,11 @@ export function FAQPage() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] flex flex-col">
+      <SEO
+        title="Frequently Asked Questions (FAQ)"
+        description="Find answers to common questions about orders, shipping, payment methods, returns, and tracking on ULMGH369."
+        canonical="https://ulmgh369.com/faq"
+      />
       <Header />
       
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 md:py-12">

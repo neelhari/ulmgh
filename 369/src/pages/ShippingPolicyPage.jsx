@@ -1,5 +1,6 @@
 import React from 'react';
 import { Header } from '../components/Header';
+import { SEO } from '../components/SEO';
 import { 
   Truck, Clock, MapPin, AlertCircle, Package, 
   Boxes, CreditCard, Banknote, Navigation, Info, 
@@ -92,6 +93,11 @@ export function ShippingPolicyPage() {
 
   return (
     <div className="bg-[#f9f9f9] min-h-screen pb-24 md:pb-16 font-sans">
+      <SEO
+        title="Shipping & Delivery Policy"
+        description="Review the official ULMGH369 shipping, dispatch schedules, courier partners, and order tracking policy."
+        canonical="https://ulmgh369.com/shipping-policy"
+      />
       <Header title="Shipping & Delivery Policy" />
       
       {/* Top Banner */}

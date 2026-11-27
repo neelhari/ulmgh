@@ -9,6 +9,7 @@ import { useStoreData } from '../store/useStoreData';
 import { motion, AnimatePresence } from 'framer-motion';
 import { openExternalLink } from '../utils/externalLink';
 import { calculateProductPricing } from '../utils/pricing';
+import { SEO } from '../components/SEO';
 
 export function ProductDetailPage() {
   const { id } = useParams();
@@ -157,8 +158,85 @@ export function ProductDetailPage() {
     groupedSpecs.push({ title: "Other Details", items: remainingItems });
   }
 
+  // SEO & Rich Snippets Configuration
+  const seoTitle = product.seo_title || `${product.name} | Buy Online | ULMGH369`;
+  const seoDesc = product.meta_description || product.description?.slice(0, 160) || `Buy ${product.name} online at the best price on ULMGH369. Enjoy fast shipping and secure payments.`;
+  const seoImg = mainImg || product.image_url || 'https://ulmgh369.com/logo.png';
+  const seoKeywords = product.seo_keywords || [product.name, product.category, 'buy online', 'ULMGH369'];
+  const productCanonicalUrl = `https://ulmgh369.com/product/${product.id}`;
+
+  const productSchema = {
+    "@context": "https://schema.org/",
+    "@type": "Product",
+    "name": product.name,
+    "image": productImages.length > 0 ? productImages : [seoImg],
+    "description": seoDesc,
+    "sku": `ULM-${product.id}`,
+    "brand": {
+      "@type": "Brand",
+      "name": product.brand || "ULMGH369"
+    },
+    "category": product.category || "General",
+    "offers": {
+      "@type": "Offer",
+      "url": productCanonicalUrl,
+      "priceCurrency": "INR",
+      "price": finalPrice || product.price || 0,
+      "priceValidUntil": "2030-12-31",
+      "itemCondition": "https://schema.org/NewCondition",
+      "availability": (product.stock > 0 || product.stock === undefined || product.stock === null)
+        ? "https://schema.org/InStock" 
+        : "https://schema.org/OutOfStock",
+      "seller": {
+        "@type": "Organization",
+        "name": "ULMGH369"
+      }
+    },
+    ...(product.rating ? {
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": product.rating,
+        "reviewCount": product.reviews_count || 1
+      }
+    } : {})
+  };
+
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": "https://ulmgh369.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": product.category || "Products",
+        "item": `https://ulmgh369.com/category/${product.category_id || 'all'}`
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": product.name,
+        "item": productCanonicalUrl
+      }
+    ]
+  };
+
   return (
     <div className="min-h-screen bg-[#f5f5f5] pb-40 md:pb-12">
+      <SEO
+        title={seoTitle}
+        description={seoDesc}
+        keywords={seoKeywords}
+        image={seoImg}
+        canonical={productCanonicalUrl}
+        type="product"
+        schema={[productSchema, breadcrumbSchema]}
+      />
       <div className="hidden md:block">
         <Header />
       </div>

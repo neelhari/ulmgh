@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
+import { SEO } from '../components/SEO';
 import { ShieldCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -11,6 +12,11 @@ export function PrivacyPolicyPage() {
 
   return (
     <div className="bg-[#f9f9f9] min-h-screen pb-20 md:pb-0 font-sans">
+      <SEO
+        title="Privacy Policy"
+        description="Learn how ULMGH369 collects, uses, and safeguards customer personal information and transactional data."
+        canonical="https://ulmgh369.com/privacy-policy"
+      />
       <Header variant="back" title="Privacy Policy" />
 
       {/* Hero Section */}

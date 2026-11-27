@@ -10,6 +10,7 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { motion } from 'framer-motion';
 import { openExternalLink } from '../utils/externalLink';
+import { SEO } from '../components/SEO';
 
 import imgHeroBanner from '../assets/hero_banner.png';
 import imgHeroBannerPremium from '../assets/hero_banner_premium.jpg';
@@ -289,6 +290,12 @@ export function HomePage() {
 
   return (
     <div ref={container} className="bg-gray-50/50 min-h-screen pb-8 md:pb-8 font-sans">
+      <SEO
+        title="ULMGH369 | Shop Smart. Live Better."
+        description="Discover top quality products across electronics, fashion, home essentials, traditional handlooms, and daily deals at ULMGH369. Enjoy fast shipping & secure checkout."
+        keywords={['ULMGH369', 'online shopping', 'electronics', 'fashion', 'handlooms', 'sarees', 'home essentials', 'daily deals', 'india online store']}
+        canonical="https://ulmgh369.com/"
+      />
       <Header variant="home" />
 
       <div className="max-w-lg mx-auto md:max-w-6xl w-full">

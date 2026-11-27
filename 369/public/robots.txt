@@ -1,8 +1,19 @@
 User-agent: *
 Allow: /
 Disallow: /admin
+Disallow: /admin/*
+Disallow: /vendor
+Disallow: /vendor/*
+Disallow: /support
+Disallow: /support/*
 Disallow: /checkout
 Disallow: /cart
 Disallow: /orders
+Disallow: /my-orders
+Disallow: /my-addresses
+Disallow: /account-settings
+Disallow: /delete-account
+Disallow: /reset-password
+Disallow: /razorpay-test
 
 Sitemap: https://ulmgh369.com/sitemap.xml

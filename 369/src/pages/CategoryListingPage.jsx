@@ -4,6 +4,7 @@ import { Search, Filter, X, Check, ChevronDown } from 'lucide-react';
 import { Header } from '../components/Header';
 import { ProductCard } from '../components/ProductCard';
 import { useStoreData } from '../store/useStoreData';
+import { SEO } from '../components/SEO';
 import imgAarti from '../assets/story_aarti.png';
 
 export function CategoryListingPage() {
@@ -143,8 +144,23 @@ export function CategoryListingPage() {
     </div>
   );
 
+  const categoryCanonicalUrl = `https://ulmgh369.com/category/${categoryId || 'all'}`;
+
   return (
     <div className="bg-[#fcfcfa] min-h-screen pb-24 font-sans">
+      <SEO
+        title={`${categoryName} | Buy Online | ULMGH369`}
+        description={`Explore the best collection of ${categoryName} on ULMGH369. Shop high quality verified products with fast delivery and easy returns.`}
+        keywords={[categoryName, 'buy online', 'ULMGH369', 'deals', 'shopping', 'best price']}
+        canonical={categoryCanonicalUrl}
+        schema={{
+          "@context": "https://schema.org",
+          "@type": "CollectionPage",
+          "name": categoryName,
+          "url": categoryCanonicalUrl,
+          "description": `Shop ${categoryName} online at ULMGH369.`
+        }}
+      />
       <Header />
       
       <div className="max-w-[1440px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 mt-6">

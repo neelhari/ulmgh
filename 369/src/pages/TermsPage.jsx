@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Header } from '../components/Header';
+import { SEO } from '../components/SEO';
 import { Scale } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -10,6 +11,11 @@ export function TermsPage() {
 
   return (
     <div className="bg-[#f9f9f9] min-h-screen pb-20 md:pb-0 font-sans">
+      <SEO
+        title="Terms of Service"
+        description="Review the terms and conditions governing purchases, seller relationships, and platform usage on ULMGH369."
+        canonical="https://ulmgh369.com/terms"
+      />
       <Header variant="back" title="Terms of Service" />
 
       {/* Hero Section */}

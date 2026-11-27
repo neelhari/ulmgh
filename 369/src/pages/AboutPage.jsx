@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '../components/Header';
+import { SEO } from '../components/SEO';
 import { Globe, HeartHandshake, Leaf, Rocket, ShieldCheck, Target, Cpu, Users, MapPin, Building2, ShoppingBag } from 'lucide-react';
 
 const coreValues = [
@@ -22,6 +23,11 @@ const categories = [
 export function AboutPage() {
   return (
     <div className="bg-[#fcfcfc] min-h-screen pb-20 md:pb-0 font-sans text-gray-800">
+      <SEO
+        title="About Us"
+        description="Learn about ULMGH369 - an e-commerce ecosystem empowering local artisans, handlooms, and authentic goods with modern commerce."
+        canonical="https://ulmgh369.com/about"
+      />
       <Header variant="back" title="About Us" />
 
       {/* Hero Section */}

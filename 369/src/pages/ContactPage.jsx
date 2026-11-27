@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '../components/Header';
+import { SEO } from '../components/SEO';
 import { Mail, Phone, MapPin, Send, Package, RefreshCcw, CreditCard, HelpCircle, MessageSquare } from 'lucide-react';
 
 export function ContactPage() {
@@ -26,6 +27,11 @@ export function ContactPage() {
 
   return (
     <div className="bg-[#f9f9f9] min-h-screen pb-24 md:pb-16 font-sans relative">
+      <SEO
+        title="Contact Us & Help Center"
+        description="Get in touch with ULMGH369 customer support for order tracking, delivery timelines, returns, and merchant inquiries."
+        canonical="https://ulmgh369.com/contact"
+      />
       <Header title="Help Center" variant="home" />
       
       {/* Top Banner */}
