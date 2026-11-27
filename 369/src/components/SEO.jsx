@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 const SITE_NAME = 'ULMGH369';
-const SITE_URL = 'https://ulmgh369.com';
+const SITE_URL = 'https://www.ulmgh-369.com';
 const DEFAULT_IMAGE = `${SITE_URL}/logo.png`;
 const DEFAULT_DESC = 'Experience the next generation of e-commerce. Discover top quality products curated exclusively for you. Shop easily, securely, and get fast delivery with ULMGH369.';
 

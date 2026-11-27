@@ -161,9 +161,9 @@ export function ProductDetailPage() {
   // SEO & Rich Snippets Configuration
   const seoTitle = product.seo_title || `${product.name} | Buy Online | ULMGH369`;
   const seoDesc = product.meta_description || product.description?.slice(0, 160) || `Buy ${product.name} online at the best price on ULMGH369. Enjoy fast shipping and secure payments.`;
-  const seoImg = mainImg || product.image_url || 'https://ulmgh369.com/logo.png';
+  const seoImg = mainImg || product.image_url || 'https://www.ulmgh-369.com/logo.png';
   const seoKeywords = product.seo_keywords || [product.name, product.category, 'buy online', 'ULMGH369'];
-  const productCanonicalUrl = `https://ulmgh369.com/product/${product.id}`;
+  const productCanonicalUrl = `https://www.ulmgh-369.com/product/${product.id}`;
 
   const productSchema = {
     "@context": "https://schema.org/",
@@ -209,13 +209,13 @@ export function ProductDetailPage() {
         "@type": "ListItem",
         "position": 1,
         "name": "Home",
-        "item": "https://ulmgh369.com/"
+        "item": "https://www.ulmgh-369.com/"
       },
       {
         "@type": "ListItem",
         "position": 2,
         "name": product.category || "Products",
-        "item": `https://ulmgh369.com/category/${product.category_id || 'all'}`
+        "item": `https://www.ulmgh-369.com/category/${product.category_id || 'all'}`
       },
       {
         "@type": "ListItem",

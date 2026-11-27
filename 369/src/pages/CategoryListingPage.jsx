@@ -144,7 +144,7 @@ export function CategoryListingPage() {
     </div>
   );
 
-  const categoryCanonicalUrl = `https://ulmgh369.com/category/${categoryId || 'all'}`;
+  const categoryCanonicalUrl = `https://www.ulmgh-369.com/category/${categoryId || 'all'}`;
 
   return (
     <div className="bg-[#fcfcfa] min-h-screen pb-24 font-sans">

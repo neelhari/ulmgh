@@ -16,4 +16,4 @@ Disallow: /delete-account
 Disallow: /reset-password
 Disallow: /razorpay-test
 
-Sitemap: https://ulmgh369.com/sitemap.xml
+Sitemap: https://www.ulmgh-369.com/sitemap.xml

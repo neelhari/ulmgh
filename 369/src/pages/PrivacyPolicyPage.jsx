@@ -15,7 +15,7 @@ export function PrivacyPolicyPage() {
       <SEO
         title="Privacy Policy"
         description="Learn how ULMGH369 collects, uses, and safeguards customer personal information and transactional data."
-        canonical="https://ulmgh369.com/privacy-policy"
+        canonical="https://www.ulmgh-369.com/privacy-policy"
       />
       <Header variant="back" title="Privacy Policy" />
 

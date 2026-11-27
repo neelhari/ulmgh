@@ -96,7 +96,7 @@ export function ShippingPolicyPage() {
       <SEO
         title="Shipping & Delivery Policy"
         description="Review the official ULMGH369 shipping, dispatch schedules, courier partners, and order tracking policy."
-        canonical="https://ulmgh369.com/shipping-policy"
+        canonical="https://www.ulmgh-369.com/shipping-policy"
       />
       <Header title="Shipping & Delivery Policy" />
       

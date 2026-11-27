@@ -294,7 +294,7 @@ export function HomePage() {
         title="ULMGH369 | Shop Smart. Live Better."
         description="Discover top quality products across electronics, fashion, home essentials, traditional handlooms, and daily deals at ULMGH369. Enjoy fast shipping & secure checkout."
         keywords={['ULMGH369', 'online shopping', 'electronics', 'fashion', 'handlooms', 'sarees', 'home essentials', 'daily deals', 'india online store']}
-        canonical="https://ulmgh369.com/"
+        canonical="https://www.ulmgh-369.com/"
       />
       <Header variant="home" />
 

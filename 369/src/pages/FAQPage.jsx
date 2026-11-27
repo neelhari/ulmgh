@@ -30,7 +30,7 @@ export function FAQPage() {
       <SEO
         title="Frequently Asked Questions (FAQ)"
         description="Find answers to common questions about orders, shipping, payment methods, returns, and tracking on ULMGH369."
-        canonical="https://ulmgh369.com/faq"
+        canonical="https://www.ulmgh-369.com/faq"
       />
       <Header />
       

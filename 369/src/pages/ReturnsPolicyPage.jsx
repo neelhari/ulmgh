@@ -236,7 +236,7 @@ export function ReturnsPolicyPage() {
       <SEO
         title="Returns & Exchanges Policy"
         description="Read the ULMGH369 returns, replacement, and refund policies for authentic handloom and marketplace items."
-        canonical="https://ulmgh369.com/returns-policy"
+        canonical="https://www.ulmgh-369.com/returns-policy"
       />
       <Header title="Returns & Exchanges Policy" />
       

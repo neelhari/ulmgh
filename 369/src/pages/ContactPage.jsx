@@ -30,7 +30,7 @@ export function ContactPage() {
       <SEO
         title="Contact Us & Help Center"
         description="Get in touch with ULMGH369 customer support for order tracking, delivery timelines, returns, and merchant inquiries."
-        canonical="https://ulmgh369.com/contact"
+        canonical="https://www.ulmgh-369.com/contact"
       />
       <Header title="Help Center" variant="home" />
       

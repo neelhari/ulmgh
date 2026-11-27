@@ -14,7 +14,7 @@ export function TermsPage() {
       <SEO
         title="Terms of Service"
         description="Review the terms and conditions governing purchases, seller relationships, and platform usage on ULMGH369."
-        canonical="https://ulmgh369.com/terms"
+        canonical="https://www.ulmgh-369.com/terms"
       />
       <Header variant="back" title="Terms of Service" />
 

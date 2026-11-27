@@ -26,7 +26,7 @@ export function AboutPage() {
       <SEO
         title="About Us"
         description="Learn about ULMGH369 - an e-commerce ecosystem empowering local artisans, handlooms, and authentic goods with modern commerce."
-        canonical="https://ulmgh369.com/about"
+        canonical="https://www.ulmgh-369.com/about"
       />
       <Header variant="back" title="About Us" />
 
